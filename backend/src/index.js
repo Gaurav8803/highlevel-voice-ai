@@ -12,7 +12,24 @@ const app = Fastify({
 
 await app.register(fastifyEnv, envOptions)
 await app.register(cors, {
-  origin: true,
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true)
+      return
+    }
+
+    const allowedOrigins = [
+      /^https:\/\/app\.gohighlevel\.com$/,
+      /^https:\/\/([a-z0-9-]+\.)*gohighlevel\.com$/,
+      /^https:\/\/app\.leadconnectorhq\.com$/,
+      /^https:\/\/([a-z0-9-]+\.)*leadconnectorhq\.com$/,
+      /^http:\/\/localhost(?::\d+)?$/,
+      /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
+    ]
+    const isAllowed = allowedOrigins.some((pattern) => pattern.test(origin))
+
+    callback(isAllowed ? null : new Error('Origin not allowed by CORS'), isAllowed)
+  },
 })
 
 const [
@@ -20,6 +37,7 @@ const [
   { default: agentsRoutes },
   { default: callsRoutes },
   { default: dashboardRoutes },
+  { default: embedRoutes },
   { ghlClient },
   { llmService },
   { prisma },
@@ -28,6 +46,7 @@ const [
   import('./routes/agents.js'),
   import('./routes/calls.js'),
   import('./routes/dashboard.js'),
+  import('./routes/embed.js'),
   import('./services/ghl-client.js'),
   import('./services/llm-service.js'),
   import('./services/prisma.js'),
@@ -47,7 +66,17 @@ await app.register(async function apiRoutes(api) {
   await api.register(dashboardRoutes)
 }, { prefix: '/api' })
 
+await app.register(embedRoutes)
+
 app.get('/health', async function healthHandler() {
+  return {
+    data: {
+      status: 'ok',
+    },
+  }
+})
+
+app.get('/api/health', async function apiHealthHandler() {
   return {
     data: {
       status: 'ok',

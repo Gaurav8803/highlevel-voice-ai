@@ -51,6 +51,13 @@ function getTopIssueLabel(evaluations) {
   return [...counts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || null
 }
 
+function getIssuesFoundCount(evaluations) {
+  return evaluations.reduce(
+    (total, evaluation) => total + getFailedFindings(evaluation.findings).length,
+    0
+  )
+}
+
 function getTrend(scoresDescending) {
   const recentScores = scoresDescending.slice(0, 5)
   const previousScores = scoresDescending.slice(5, 10)
@@ -73,6 +80,8 @@ function getTrend(scoresDescending) {
 }
 
 function serializeRecentCall(callLog) {
+  const topFinding = getFailedFindings(callLog.evaluation?.findings || [])[0]?.label || null
+
   return {
     agentId: callLog.agentId,
     agentName: callLog.agent?.agentName || null,
@@ -83,6 +92,7 @@ function serializeRecentCall(callLog) {
     overallScore: callLog.evaluation?.overallScore ?? null,
     scoreEvaluatedAt: callLog.evaluation?.evaluatedAt ?? null,
     summary: callLog.summary,
+    topFinding,
   }
 }
 
@@ -138,7 +148,16 @@ function buildFindingFrequency(evaluations) {
   for (const evaluation of evaluations) {
     for (const finding of getFailedFindings(evaluation.findings)) {
       const key = `${finding.category}::${finding.label}`
-      const current = counts.get(key) || { category: finding.category, count: 0, finding: finding.label }
+      const current = counts.get(key) || {
+        category: finding.category,
+        count: 0,
+        finding: finding.label,
+        sampleEvidence: {
+          quotes: ensureArray(finding.evidence?.quotes).slice(0, 2),
+          reasoning: finding.evidence?.reasoning || null,
+          turnIndices: ensureArray(finding.evidence?.turnIndices).slice(0, 4),
+        },
+      }
       current.count += 1
       counts.set(key, current)
     }
@@ -173,6 +192,9 @@ function buildTopRecommendations(evaluations) {
       const current = counts.get(title) || {
         description: recommendation.description || recommendation.recommendation || null,
         frequency: 0,
+        impactArea: recommendation.impactArea || null,
+        priority: recommendation.priority ?? null,
+        relatedFindings: ensureArray(recommendation.relatedFindings),
         title,
       }
       current.frequency += 1
@@ -180,7 +202,16 @@ function buildTopRecommendations(evaluations) {
     }
   }
 
-  return [...counts.values()].sort((left, right) => right.frequency - left.frequency || left.title.localeCompare(right.title))
+  return [...counts.values()].sort((left, right) => {
+    const leftPriority = left.priority ?? Number.POSITIVE_INFINITY
+    const rightPriority = right.priority ?? Number.POSITIVE_INFINITY
+
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority
+    }
+
+    return right.frequency - left.frequency || left.title.localeCompare(right.title)
+  })
 }
 
 function getAverageResponseLatency(evaluations) {
@@ -231,6 +262,7 @@ async function getDashboardOverview() {
         },
         evaluation: {
           select: {
+            findings: true,
             evaluatedAt: true,
             overallScore: true,
           },
@@ -265,9 +297,15 @@ async function getDashboardOverview() {
     }),
   ])
 
+  const issuesFound = agents.reduce(
+    (total, agent) => total + getIssuesFoundCount(agent.evaluations),
+    0
+  )
+
   return {
     averageScore: roundMetric(scoreAggregate._avg.overallScore || 0),
     agentSummaries: agents.map(buildAgentSummary),
+    issuesFound,
     recentCalls: recentCalls.map(serializeRecentCall),
     totalAgents,
     totalCalls,
@@ -334,6 +372,12 @@ async function getAgentDashboard(agentId) {
 
   return {
     agent,
+    calls: calls.map((callLog) => ({
+      calledAt: callLog.calledAt,
+      duration: callLog.duration,
+      id: callLog.id,
+      overallScore: evaluations.find((evaluation) => evaluation.callLogId === callLog.id)?.overallScore ?? null,
+    })),
     metrics: {
       actionSuccessRates: buildActionSuccessRates(evaluations),
       averageDuration: average(durations),
