@@ -21,6 +21,7 @@ const [
   { default: callsRoutes },
   { default: dashboardRoutes },
   { ghlClient },
+  { llmService },
   { prisma },
 ] = await Promise.all([
   import('./routes/analysis.js'),
@@ -28,10 +29,12 @@ const [
   import('./routes/calls.js'),
   import('./routes/dashboard.js'),
   import('./services/ghl-client.js'),
+  import('./services/llm-service.js'),
   import('./services/prisma.js'),
 ])
 
 ghlClient.setLogger(app.log)
+llmService.setLogger(app.log)
 
 app.addHook('onClose', async function disconnectPrisma() {
   await prisma.$disconnect()

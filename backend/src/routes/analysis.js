@@ -1,8 +1,20 @@
-import { evaluateCall } from '../services/evaluation-service.js'
+import { evaluateAllCalls, evaluateCall } from '../services/evaluation-service.js'
 import { prisma } from '../services/prisma.js'
 
-function isNotFoundError(error) {
-  return error?.code === 'NOT_FOUND'
+function sendRouteError(reply, error) {
+  if (error?.code === 'NOT_FOUND') {
+    return reply.code(404).send({
+      error: error.message,
+    })
+  }
+
+  if (error?.code === 'INVALID_LLM_JSON' || error?.code === 'LLM_REQUEST_FAILED') {
+    return reply.code(502).send({
+      error: error.message,
+    })
+  }
+
+  throw error
 }
 
 export default async function analysisRoutes(fastify) {
@@ -12,13 +24,17 @@ export default async function analysisRoutes(fastify) {
         data: await evaluateCall(request.params.callId),
       }
     } catch (error) {
-      if (isNotFoundError(error)) {
-        return reply.code(404).send({
-          error: error.message,
-        })
-      }
+      return sendRouteError(reply, error)
+    }
+  })
 
-      throw error
+  fastify.post('/analysis/evaluate-all/:agentId', async function evaluateAllCallsHandler(request, reply) {
+    try {
+      return {
+        data: await evaluateAllCalls(request.params.agentId),
+      }
+    } catch (error) {
+      return sendRouteError(reply, error)
     }
   })
 

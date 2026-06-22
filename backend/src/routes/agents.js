@@ -1,5 +1,22 @@
 import { prisma } from '../services/prisma.js'
+import { generateRubric } from '../services/evaluation-service.js'
 import { syncAgents } from '../services/ingestion-service.js'
+
+function sendRouteError(reply, error) {
+  if (error?.code === 'NOT_FOUND') {
+    return reply.code(404).send({
+      error: error.message,
+    })
+  }
+
+  if (error?.code === 'INVALID_LLM_JSON' || error?.code === 'LLM_REQUEST_FAILED') {
+    return reply.code(502).send({
+      error: error.message,
+    })
+  }
+
+  throw error
+}
 
 function getLatestEvaluationSummary(evaluations) {
   const [evaluation] = evaluations
@@ -113,6 +130,43 @@ export default async function agentsRoutes(fastify) {
   fastify.post('/agents/sync', async function syncAgentsHandler() {
     return {
       data: await syncAgents(),
+    }
+  })
+
+  fastify.post('/agents/:id/generate-rubric', async function generateRubricHandler(request, reply) {
+    try {
+      return {
+        data: await generateRubric(request.params.id),
+      }
+    } catch (error) {
+      return sendRouteError(reply, error)
+    }
+  })
+
+  fastify.get('/agents/:id/rubric', async function getRubricHandler(request, reply) {
+    const agent = await prisma.agent.findUnique({
+      select: {
+        id: true,
+        rubric: true,
+        rubricGeneratedAt: true,
+      },
+      where: {
+        id: request.params.id,
+      },
+    })
+
+    if (!agent) {
+      return reply.code(404).send({
+        error: 'Agent not found.',
+      })
+    }
+
+    return {
+      data: {
+        id: agent.id,
+        rubric: agent.rubric,
+        rubricGeneratedAt: agent.rubricGeneratedAt,
+      },
     }
   })
 }
