@@ -66,6 +66,16 @@ function serializeAgentDetail(agent) {
   }
 }
 
+function serializeRubricResource(agent) {
+  return {
+    agentId: agent.id,
+    agentName: agent.agentName,
+    businessName: agent.businessName,
+    generatedAt: agent.rubricGeneratedAt,
+    rubric: agent.rubric,
+  }
+}
+
 export default async function agentsRoutes(fastify) {
   fastify.get('/agents', async function listAgentsHandler() {
     const agents = await prisma.agent.findMany({
@@ -146,6 +156,8 @@ export default async function agentsRoutes(fastify) {
   fastify.get('/agents/:id/rubric', async function getRubricHandler(request, reply) {
     const agent = await prisma.agent.findUnique({
       select: {
+        agentName: true,
+        businessName: true,
         id: true,
         rubric: true,
         rubricGeneratedAt: true,
@@ -161,12 +173,45 @@ export default async function agentsRoutes(fastify) {
       })
     }
 
+    if (!agent.rubric) {
+      return reply.code(404).send({
+        error: 'Rubric not generated yet',
+      })
+    }
+
     return {
-      data: {
-        id: agent.id,
-        rubric: agent.rubric,
-        rubricGeneratedAt: agent.rubricGeneratedAt,
-      },
+      data: serializeRubricResource(agent),
+    }
+  })
+
+  fastify.post('/agents/:id/rubric/regenerate', async function regenerateRubricHandler(request, reply) {
+    try {
+      await generateRubric(request.params.id, { forceRegenerate: true })
+
+      const agent = await prisma.agent.findUnique({
+        select: {
+          agentName: true,
+          businessName: true,
+          id: true,
+          rubric: true,
+          rubricGeneratedAt: true,
+        },
+        where: {
+          id: request.params.id,
+        },
+      })
+
+      if (!agent || !agent.rubric) {
+        return reply.code(404).send({
+          error: 'Rubric not generated yet',
+        })
+      }
+
+      return {
+        data: serializeRubricResource(agent),
+      }
+    } catch (error) {
+      return sendRouteError(reply, error)
     }
   })
 }

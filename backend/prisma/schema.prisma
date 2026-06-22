@@ -49,9 +49,11 @@ model CallEvaluation {
   id                   String   @id @default(cuid())
   callLogId            String   @unique
   agentId              String
+  callPath             String?  @db.Text
   deterministicResults Json
   semanticResults      Json
   findings             Json
+  outOfScopeItems      Json
   recommendations      Json
   overallScore         Float?
   evaluatedAt          DateTime

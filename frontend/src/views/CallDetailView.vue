@@ -103,10 +103,25 @@
           class="mt-5 rounded-lg bg-surface-tertiary p-4 text-sm text-content-secondary"
         >
           <p class="font-medium text-content-primary">
-            {{ callDetail.agent.rubricSummary.agentSummary }}
+            {{ callDetail.agent.rubricSummary.agentGoalSummary }}
           </p>
           <p class="mt-2">
             Goals: {{ callDetail.agent.rubricSummary.primaryGoals.join(', ') || 'No goals listed.' }}
+          </p>
+          <p class="mt-2">
+            Total rubric items: {{ callDetail.agent.rubricSummary.totalRubricItems || 0 }}
+          </p>
+        </div>
+
+        <div
+          v-if="callDetail.evaluation?.callPath"
+          class="mt-4 rounded-lg border border-border bg-white p-4 text-sm text-content-secondary"
+        >
+          <p class="text-xs font-semibold uppercase tracking-wide text-content-tertiary">
+            Call Path
+          </p>
+          <p class="mt-2 leading-6 text-content-primary">
+            {{ callDetail.evaluation.callPath }}
           </p>
         </div>
       </header>
@@ -154,7 +169,7 @@
                 Evaluation Panel
               </h2>
               <p class="text-sm text-content-secondary">
-                Deterministic checks and transcript-backed AI analysis.
+                Transcript-backed AI analysis and recommendations.
               </p>
             </div>
             <div class="text-right">
@@ -180,35 +195,18 @@
               <section>
                 <div class="mb-3 flex items-center justify-between">
                   <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                    Deterministic Checks
+                    Evaluated Rubric Items
                   </h3>
                   <span class="text-xs text-content-secondary">
-                    {{ deterministicChecks.length }} checks
+                    {{ evaluatedRubricItems.length }} items
                   </span>
                 </div>
-                <div class="space-y-3">
+                <div
+                  v-if="evaluatedRubricItems.length"
+                  class="space-y-3"
+                >
                   <FindingItem
-                    v-for="check in deterministicChecks"
-                    :key="check.checkId"
-                    :finding="check"
-                    :selected="selectedFindingKey === findingKey(check)"
-                    @select="selectFinding"
-                  />
-                </div>
-              </section>
-
-              <section>
-                <div class="mb-3 flex items-center justify-between">
-                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                    AI Analysis
-                  </h3>
-                  <span class="text-xs text-content-secondary">
-                    {{ semanticFindings.length }} findings
-                  </span>
-                </div>
-                <div class="space-y-3">
-                  <FindingItem
-                    v-for="finding in semanticFindings"
+                    v-for="finding in evaluatedRubricItems"
                     :key="findingKey(finding)"
                     :finding="finding"
                     :selected="selectedFindingKey === findingKey(finding)"
@@ -216,6 +214,83 @@
                     @select="selectFinding"
                   />
                 </div>
+                <p
+                  v-else
+                  class="text-sm text-content-secondary"
+                >
+                  No rubric items were evaluated for this call yet.
+                </p>
+              </section>
+
+              <section>
+                <div class="mb-3 flex items-center justify-between">
+                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
+                    Emergent Findings
+                  </h3>
+                  <span class="text-xs text-content-secondary">
+                    {{ emergentFindings.length }} findings
+                  </span>
+                </div>
+                <div
+                  v-if="emergentFindings.length"
+                  class="space-y-3"
+                >
+                  <FindingItem
+                    v-for="finding in emergentFindings"
+                    :key="findingKey(finding)"
+                    :finding="finding"
+                    :selected="selectedFindingKey === findingKey(finding)"
+                    show-confidence
+                    @select="selectFinding"
+                  />
+                </div>
+                <p
+                  v-else
+                  class="text-sm text-content-secondary"
+                >
+                  No emergent findings were surfaced outside the rubric.
+                </p>
+              </section>
+
+              <section>
+                <div class="mb-3 flex items-center justify-between">
+                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
+                    Out Of Scope
+                  </h3>
+                  <span class="text-xs text-content-secondary">
+                    {{ outOfScopeItems.length }} items
+                  </span>
+                </div>
+                <div
+                  v-if="outOfScopeItems.length"
+                  class="space-y-3"
+                >
+                  <article
+                    v-for="item in outOfScopeItems"
+                    :key="item.rubricItemId"
+                    class="rounded-lg border border-border bg-surface-tertiary p-4"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 class="text-sm font-semibold text-content-primary">
+                          {{ item.label }}
+                        </h4>
+                        <p class="mt-2 text-sm leading-6 text-content-secondary">
+                          {{ item.reason }}
+                        </p>
+                      </div>
+                      <span class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-content-secondary">
+                        Not applicable
+                      </span>
+                    </div>
+                  </article>
+                </div>
+                <p
+                  v-else
+                  class="text-sm text-content-secondary"
+                >
+                  All rubric items in scope were evaluated.
+                </p>
               </section>
 
               <section>
@@ -282,8 +357,21 @@ const selectedFinding = ref(null)
 const isEmbedded = computed(() => route.query.embedded === 'true' || window.__VOICE_AI_EMBED__?.embedded === true)
 
 const callDetail = computed(() => data.value)
-const deterministicChecks = computed(() => callDetail.value?.evaluation?.deterministicResults?.checks || [])
-const semanticFindings = computed(() => callDetail.value?.evaluation?.semanticResults?.findings || [])
+const evaluatedRubricItems = computed(() => (
+  (callDetail.value?.evaluation?.evaluatedRubricItems || []).map((item) => ({
+    ...item,
+    passed: normalizePassedStatus(item.status),
+    source: 'llm_semantic',
+  }))
+))
+const emergentFindings = computed(() => (
+  (callDetail.value?.evaluation?.emergentFindings || []).map((item) => ({
+    ...item,
+    passed: normalizePassedStatus(item.status),
+    source: 'llm_semantic',
+  }))
+))
+const outOfScopeItems = computed(() => callDetail.value?.evaluation?.outOfScopeItems || [])
 const recommendations = computed(() => callDetail.value?.evaluation?.recommendations || [])
 const turns = computed(() => callDetail.value?.call?.transcriptTurns || [])
 const activeTurnIndices = computed(() => selectedFinding.value?.evidence?.turnIndices || [])
@@ -331,7 +419,19 @@ function getSharedQuery() {
 }
 
 function findingKey(finding) {
-  return finding.checkId || finding.rubricItemId || finding.label
+  return finding.id || finding.checkId || finding.rubricItemId || finding.label
+}
+
+function normalizePassedStatus(status) {
+  if (status === 'passed') {
+    return true
+  }
+
+  if (status === 'uncertain') {
+    return null
+  }
+
+  return false
 }
 
 function setTurnRef(index, element) {

@@ -6,8 +6,15 @@ import { prisma } from './prisma.js'
 import { llmService } from './llm-service.js'
 import { runDeterministicEvaluation } from './deterministic-evaluator.js'
 
-const RUBRIC_MAX_TOKENS = 2000
-const SEMANTIC_EVAL_MAX_TOKENS = 3000
+const RUBRIC_MAX_TOKENS = 8000
+const SEMANTIC_EVAL_MAX_TOKENS = 8000
+const RUBRIC_SEVERITY_WEIGHTS = {
+  critical: 4,
+  high: 3,
+  low: 1,
+  medium: 2,
+}
+const VALID_EVALUATION_STATUSES = new Set(['passed', 'failed', 'partially_met', 'uncertain'])
 
 function createAppError(code, message) {
   const error = new Error(message)
@@ -27,13 +34,14 @@ function isValidRubricItem(item) {
   return isObject(item) &&
     typeof item.id === 'string' &&
     typeof item.category === 'string' &&
+    typeof item.label === 'string' &&
     typeof item.description === 'string' &&
-    typeof item.successCriteria === 'string' &&
-    typeof item.failureCriteria === 'string' &&
-    Number.isInteger(item.weight) &&
-    item.weight >= 1 &&
-    item.weight <= 5 &&
-    typeof item.requiresSemanticEval === 'boolean'
+    typeof item.checkType === 'string' &&
+    typeof item.successCondition === 'string' &&
+    typeof item.failureCondition === 'string' &&
+    typeof item.evidenceRequired === 'string' &&
+    typeof item.severity === 'string' &&
+    typeof item.requiresLlm === 'boolean'
 }
 
 function assertValidRubric(rubric) {
@@ -41,26 +49,61 @@ function assertValidRubric(rubric) {
     throw new Error('Rubric payload must be an object.')
   }
 
-  if (typeof rubric.agentSummary !== 'string' || !Array.isArray(rubric.primaryGoals)) {
+  if (typeof rubric.agentGoalSummary !== 'string' || !Array.isArray(rubric.primaryGoals)) {
     throw new Error('Rubric payload is missing top-level required fields.')
   }
 
-  if (!Array.isArray(rubric.rubricItems) || !rubric.rubricItems.every(isValidRubricItem)) {
-    throw new Error('Rubric payload has invalid rubricItems.')
+  if (!Array.isArray(rubric.rubric) || !rubric.rubric.every(isValidRubricItem)) {
+    throw new Error('Rubric payload has invalid rubric items.')
+  }
+
+  const itemIds = rubric.rubric.map((item) => item.id)
+  if (new Set(itemIds).size !== itemIds.length) {
+    throw new Error('Rubric payload contains duplicate rubric item ids.')
   }
 }
 
 function isValidSemanticFinding(finding) {
   return isObject(finding) &&
-    Object.prototype.hasOwnProperty.call(finding, 'rubricItemId') &&
+    typeof finding.rubricItemId === 'string' &&
     typeof finding.category === 'string' &&
     typeof finding.label === 'string' &&
-    ['boolean', 'object'].includes(typeof finding.passed) &&
+    typeof finding.severity === 'string' &&
+    VALID_EVALUATION_STATUSES.has(finding.status) &&
     typeof finding.confidence === 'number' &&
     finding.confidence >= 0 &&
     finding.confidence <= 1 &&
-    finding.source === 'llm_semantic' &&
-    isObject(finding.evidence)
+    isObject(finding.evidence) &&
+    (
+      finding.recommendation === undefined ||
+      finding.recommendation === null ||
+      typeof finding.recommendation === 'string'
+    )
+}
+
+function isValidOutOfScopeItem(item) {
+  return isObject(item) &&
+    typeof item.rubricItemId === 'string' &&
+    typeof item.label === 'string' &&
+    typeof item.reason === 'string'
+}
+
+function isValidEmergentFinding(finding) {
+  return isObject(finding) &&
+    typeof finding.id === 'string' &&
+    typeof finding.label === 'string' &&
+    typeof finding.category === 'string' &&
+    typeof finding.severity === 'string' &&
+    VALID_EVALUATION_STATUSES.has(finding.status) &&
+    typeof finding.confidence === 'number' &&
+    finding.confidence >= 0 &&
+    finding.confidence <= 1 &&
+    isObject(finding.evidence) &&
+    (
+      finding.recommendation === undefined ||
+      finding.recommendation === null ||
+      typeof finding.recommendation === 'string'
+    )
 }
 
 function assertValidSemanticPayload(payload) {
@@ -68,8 +111,20 @@ function assertValidSemanticPayload(payload) {
     throw new Error('Semantic evaluation payload must be an object.')
   }
 
-  if (!Array.isArray(payload.findings) || !payload.findings.every(isValidSemanticFinding)) {
-    throw new Error('Semantic evaluation payload has invalid findings.')
+  if (typeof payload.callPath !== 'string') {
+    throw new Error('Semantic evaluation payload is missing callPath.')
+  }
+
+  if (!Array.isArray(payload.evaluatedRubricItems) || !payload.evaluatedRubricItems.every(isValidSemanticFinding)) {
+    throw new Error('Semantic evaluation payload has invalid evaluatedRubricItems.')
+  }
+
+  if (!Array.isArray(payload.outOfScopeItems) || !payload.outOfScopeItems.every(isValidOutOfScopeItem)) {
+    throw new Error('Semantic evaluation payload has invalid outOfScopeItems.')
+  }
+
+  if (!Array.isArray(payload.emergentFindings) || !payload.emergentFindings.every(isValidEmergentFinding)) {
+    throw new Error('Semantic evaluation payload has invalid emergentFindings.')
   }
 
   if (typeof payload.overallAssessment !== 'string' || !Array.isArray(payload.topRecommendations)) {
@@ -78,16 +133,20 @@ function assertValidSemanticPayload(payload) {
 }
 
 function getEvidenceWeightMap(rubric) {
-  return new Map((rubric.rubricItems || []).map((item) => [item.id, item.weight]))
+  return new Map((rubric.rubric || []).map((item) => [item.id, RUBRIC_SEVERITY_WEIGHTS[item.severity] || 1]))
 }
 
-function getScoreValue(passed) {
-  if (passed === true) {
+function getScoreValue(status) {
+  if (status === 'passed') {
     return 1
   }
 
-  if (passed === false) {
+  if (status === 'failed') {
     return 0
+  }
+
+  if (status === 'partially_met') {
+    return 0.5
   }
 
   return 0.5
@@ -102,7 +161,7 @@ function getCheckWeight(item, weightMap) {
 }
 
 function calculateOverallScore(items, rubric) {
-  const scorableItems = items.filter((item) => item.passed === true || item.passed === false || item.passed === null)
+  const scorableItems = items.filter((item) => item.status !== 'uncertain')
 
   if (scorableItems.length === 0) {
     return null
@@ -113,7 +172,7 @@ function calculateOverallScore(items, rubric) {
     const weight = getCheckWeight(item, weightMap)
 
     return {
-      score: totals.score + (getScoreValue(item.passed) * weight),
+      score: totals.score + (getScoreValue(item.status) * weight),
       weight: totals.weight + weight,
     }
   }, { score: 0, weight: 0 })
@@ -129,20 +188,6 @@ function getAgentConfigHash(agent) {
   return agent.configHash || computeAgentConfigHash(agent)
 }
 
-function buildDeterministicFindings(deterministicResults) {
-  return deterministicResults.checks.map((check) => ({
-    category: check.category,
-    checkId: check.checkId,
-    confidence: check.confidence,
-    evidence: check.evidence,
-    label: check.label,
-    passed: check.passed,
-    recommendation: check.recommendation,
-    rubricItemId: null,
-    source: check.source,
-  }))
-}
-
 function hasSemanticEvidence(finding) {
   const turnIndices = Array.isArray(finding.evidence?.turnIndices) ? finding.evidence.turnIndices : []
   const quotes = Array.isArray(finding.evidence?.quotes) ? finding.evidence.quotes : []
@@ -150,46 +195,79 @@ function hasSemanticEvidence(finding) {
   return turnIndices.length > 0 || quotes.length > 0
 }
 
-function buildRecommendations(deterministicFindings, semanticResults) {
-  const deterministicRecommendations = deterministicFindings
-    .filter((finding) => finding.passed === false && finding.recommendation)
-    .map((finding) => ({
-      checkId: finding.checkId,
-      label: finding.label,
-      recommendation: finding.recommendation,
-    }))
-
+function buildRecommendations(semanticResults) {
   const semanticRecommendations = (semanticResults.topRecommendations || []).map((recommendation) => ({
     description: recommendation.description,
     impactArea: recommendation.impactArea,
     priority: recommendation.priority,
-    relatedFindings: recommendation.relatedFindings,
+    relatedRubricItems: recommendation.relatedRubricItems,
     title: recommendation.title,
   }))
 
-  return [...deterministicRecommendations, ...semanticRecommendations]
+  return semanticRecommendations
 }
 
-function normalizeSemanticRubricItemIds(findings, rubric) {
-  const validRubricItemIds = new Set((rubric.rubricItems || []).map((item) => item.id))
+function filterValidRubricScopedItems(items, rubric) {
+  const validRubricItemIds = new Set((rubric.rubric || []).map((item) => item.id))
+  const validItems = []
   let invalidRubricItemCount = 0
 
-  const normalizedFindings = findings.map((finding) => {
-    if (finding.rubricItemId === null || validRubricItemIds.has(finding.rubricItemId)) {
-      return finding
+  for (const item of items) {
+    if (!validRubricItemIds.has(item.rubricItemId)) {
+      invalidRubricItemCount += 1
+      continue
     }
 
-    invalidRubricItemCount += 1
-
-    return {
-      ...finding,
-      rubricItemId: null,
-    }
-  })
+    validItems.push(item)
+  }
 
   return {
-    findings: normalizedFindings,
     invalidRubricItemCount,
+    validItems,
+  }
+}
+
+function normalizePassedStatus(status) {
+  if (status === 'passed') {
+    return true
+  }
+
+  if (status === 'uncertain') {
+    return null
+  }
+
+  return false
+}
+
+function normalizeEvaluatedRubricItem(item) {
+  return {
+    category: item.category,
+    confidence: item.confidence,
+    evidence: item.evidence,
+    label: item.label,
+    passed: normalizePassedStatus(item.status),
+    recommendation: item.recommendation,
+    rubricItemId: item.rubricItemId,
+    severity: item.severity,
+    source: 'llm_semantic',
+    status: item.status,
+    type: 'rubric_item',
+  }
+}
+
+function normalizeEmergentFinding(item) {
+  return {
+    category: item.category,
+    confidence: item.confidence,
+    evidence: item.evidence,
+    id: item.id,
+    label: item.label,
+    passed: normalizePassedStatus(item.status),
+    recommendation: item.recommendation,
+    severity: item.severity,
+    source: 'llm_semantic',
+    status: item.status,
+    type: 'emergent',
   }
 }
 
@@ -224,11 +302,12 @@ async function loadCallForEvaluation(callLogId) {
   return callLog
 }
 
-async function generateRubric(agentId) {
+async function generateRubric(agentId, options = {}) {
+  const { forceRegenerate = false } = options
   const agent = await loadAgent(agentId)
   const currentConfigHash = getAgentConfigHash(agent)
 
-  if (agent.rubric && currentConfigHash && currentConfigHash === agent.rubricConfigHash) {
+  if (!forceRegenerate && agent.rubric && currentConfigHash && currentConfigHash === agent.rubricConfigHash) {
     return agent.rubric
   }
 
@@ -257,6 +336,13 @@ async function generateRubric(agentId) {
       'Rubric generation returned invalid JSON payload'
     )
     throw createAppError('INVALID_LLM_JSON', `Rubric generation returned invalid JSON: ${error.message}`)
+  }
+
+  if (result.data.rubric.length < 10) {
+    llmService.logger?.warn(
+      { agentId, rubricItemCount: result.data.rubric.length },
+      'Rubric generation produced fewer than 10 items'
+    )
   }
 
   const updatedAgent = await prisma.agent.update({
@@ -310,45 +396,60 @@ async function evaluateCall(callLogId) {
   const rubric = await generateRubric(callLog.agentId)
   const deterministicResults = await runDeterministicEvaluation(callLog, callLog.agent)
   const semanticResults = await runSemanticEvaluation(callLog, callLog.agent, rubric, deterministicResults)
-  const deterministicFindings = buildDeterministicFindings(deterministicResults)
-  const normalizedSemanticFindings = normalizeSemanticRubricItemIds(semanticResults.findings, rubric)
-  const filteredSemanticFindings = normalizedSemanticFindings.findings.filter(hasSemanticEvidence)
-  const rejectedFindingsCount = normalizedSemanticFindings.findings.length - filteredSemanticFindings.length
+  const normalizedRubricItems = filterValidRubricScopedItems(semanticResults.evaluatedRubricItems, rubric)
+  const validOutOfScopeItems = filterValidRubricScopedItems(semanticResults.outOfScopeItems, rubric)
+  const filteredEvaluatedRubricItems = normalizedRubricItems.validItems.filter(hasSemanticEvidence)
+  const filteredEmergentFindings = semanticResults.emergentFindings.filter(hasSemanticEvidence)
+  const rejectedEvaluatedItemCount = normalizedRubricItems.validItems.length - filteredEvaluatedRubricItems.length
+  const rejectedEmergentFindingCount = semanticResults.emergentFindings.length - filteredEmergentFindings.length
 
   llmService.logger?.info(
     {
       callLogId,
-      invalidRubricItemCount: normalizedSemanticFindings.invalidRubricItemCount,
-      rejectedFindingsCount,
+      invalidOutOfScopeItemCount: validOutOfScopeItems.invalidRubricItemCount,
+      invalidRubricItemCount: normalizedRubricItems.invalidRubricItemCount,
+      rejectedEmergentFindingCount,
+      rejectedEvaluatedItemCount,
     },
     'Applied semantic evidence policy'
   )
 
-  const mergedFindings = [...deterministicFindings, ...filteredSemanticFindings]
   const filteredSemanticResults = {
     ...semanticResults,
-    findings: filteredSemanticFindings,
-    invalidRubricItemCount: normalizedSemanticFindings.invalidRubricItemCount,
-    rejectedFindingsCount,
+    emergentFindings: filteredEmergentFindings,
+    evaluatedRubricItems: filteredEvaluatedRubricItems,
+    invalidOutOfScopeItemCount: validOutOfScopeItems.invalidRubricItemCount,
+    invalidRubricItemCount: normalizedRubricItems.invalidRubricItemCount,
+    outOfScopeItems: validOutOfScopeItems.validItems,
+    rejectedEmergentFindingCount,
+    rejectedEvaluatedItemCount,
   }
+  const mergedFindings = [
+    ...filteredEvaluatedRubricItems.map(normalizeEvaluatedRubricItem),
+    ...filteredEmergentFindings.map(normalizeEmergentFinding),
+  ]
 
   return prisma.callEvaluation.upsert({
     create: {
       agentId: callLog.agentId,
+      callPath: filteredSemanticResults.callPath,
       callLogId,
-      deterministicResults,
+      deterministicResults: {},
       evaluatedAt: new Date(),
       findings: mergedFindings,
-      overallScore: calculateOverallScore(mergedFindings, rubric),
-      recommendations: buildRecommendations(deterministicFindings, filteredSemanticResults),
+      outOfScopeItems: filteredSemanticResults.outOfScopeItems,
+      overallScore: calculateOverallScore(filteredEvaluatedRubricItems, rubric),
+      recommendations: buildRecommendations(filteredSemanticResults),
       semanticResults: filteredSemanticResults,
     },
     update: {
-      deterministicResults,
+      callPath: filteredSemanticResults.callPath,
+      deterministicResults: {},
       evaluatedAt: new Date(),
       findings: mergedFindings,
-      overallScore: calculateOverallScore(mergedFindings, rubric),
-      recommendations: buildRecommendations(deterministicFindings, filteredSemanticResults),
+      outOfScopeItems: filteredSemanticResults.outOfScopeItems,
+      overallScore: calculateOverallScore(filteredEvaluatedRubricItems, rubric),
+      recommendations: buildRecommendations(filteredSemanticResults),
       semanticResults: filteredSemanticResults,
     },
     where: {

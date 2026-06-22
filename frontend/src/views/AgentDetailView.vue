@@ -317,15 +317,15 @@
                   </span>
                 </div>
                 <div
-                  v-if="recommendation.relatedFindings?.length"
+                  v-if="recommendation.relatedRubricItems?.length"
                   class="mt-4 flex flex-wrap gap-2"
                 >
                   <span
-                    v-for="relatedFinding in recommendation.relatedFindings"
-                    :key="relatedFinding"
+                    v-for="relatedRubricItem in recommendation.relatedRubricItems"
+                    :key="relatedRubricItem"
                     class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-content-secondary"
                   >
-                    {{ relatedFinding }}
+                    {{ relatedRubricItem }}
                   </span>
                 </div>
               </article>
@@ -426,11 +426,11 @@ const responseLatencyLabel = computed(() => `${(agentDetail.value?.metrics?.aver
 const rubricSummary = computed(() => {
   const rubric = agentDetail.value?.agent?.rubric
 
-  if (!rubric?.agentSummary) {
+  if (!rubric?.agentGoalSummary) {
     return 'Rubric generation has not completed for this agent yet.'
   }
 
-  return `${rubric.agentSummary} Primary goals: ${(rubric.primaryGoals || []).join(', ')}.`
+  return `${rubric.agentGoalSummary} Primary goals: ${(rubric.primaryGoals || []).join(', ')}.`
 })
 const sortedRecommendations = computed(() => {
   const recommendations = agentDetail.value?.topRecommendations || []

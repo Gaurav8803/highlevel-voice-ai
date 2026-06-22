@@ -35,7 +35,17 @@ function getFindingLabel(finding) {
 }
 
 function getFailedFindings(findings) {
-  return ensureArray(findings).filter((finding) => finding?.passed !== true && getFindingLabel(finding))
+  return ensureArray(findings).filter((finding) => {
+    if (!getFindingLabel(finding)) {
+      return false
+    }
+
+    if (finding?.status) {
+      return finding.status !== 'passed'
+    }
+
+    return finding?.passed !== true
+  })
 }
 
 function getTopIssueLabel(evaluations) {
@@ -194,7 +204,7 @@ function buildTopRecommendations(evaluations) {
         frequency: 0,
         impactArea: recommendation.impactArea || null,
         priority: recommendation.priority ?? null,
-        relatedFindings: ensureArray(recommendation.relatedFindings),
+        relatedRubricItems: ensureArray(recommendation.relatedRubricItems),
         title,
       }
       current.frequency += 1
@@ -229,6 +239,10 @@ function getExtractionCompleteness(evaluations) {
 
   const capturedCount = checks.filter((check) => check.passed).length
   return roundMetric((capturedCount / checks.length) * 100)
+}
+
+function getRubricItems(rubric) {
+  return ensureArray(rubric?.rubric)
 }
 
 function buildAgentSummary(agent) {
@@ -418,31 +432,46 @@ async function getCallDashboard(callId) {
     throw createAppError('NOT_FOUND', 'Call log not found.')
   }
 
-  const sortedFindings = ensureArray(callLog.evaluation?.findings)
-    .slice()
-    .sort((left, right) => (right.confidence || 0) - (left.confidence || 0))
-
   return {
     agent: {
       agentName: callLog.agent.agentName,
       businessName: callLog.agent.businessName,
       rubricSummary: callLog.agent.rubric
         ? {
-          agentSummary: callLog.agent.rubric.agentSummary || null,
+          agentGoalSummary: callLog.agent.rubric.agentGoalSummary || null,
           primaryGoals: ensureArray(callLog.agent.rubric.primaryGoals),
-          rubricItemCount: ensureArray(callLog.agent.rubric.rubricItems).length,
+          totalRubricItems: getRubricItems(callLog.agent.rubric).length,
         }
         : null,
     },
-    call: callLog,
+    call: {
+      agentId: callLog.agentId,
+      calledAt: callLog.calledAt,
+      contactId: callLog.contactId,
+      createdAt: callLog.createdAt,
+      duration: callLog.duration,
+      executedActions: callLog.executedActions,
+      extractedData: callLog.extractedData,
+      ghlCallId: callLog.ghlCallId,
+      id: callLog.id,
+      rawResponse: callLog.rawResponse,
+      summary: callLog.summary,
+      transcript: callLog.transcript,
+      transcriptTurns: callLog.transcriptTurns,
+    },
     evaluation: callLog.evaluation
       ? {
-        allFindings: sortedFindings,
-        deterministicResults: callLog.evaluation.deterministicResults,
+        callPath: callLog.evaluation.callPath,
+        emergentFindings: ensureArray(callLog.evaluation.semanticResults?.emergentFindings)
+          .slice()
+          .sort((left, right) => (right.confidence || 0) - (left.confidence || 0)),
         evaluatedAt: callLog.evaluation.evaluatedAt,
+        evaluatedRubricItems: ensureArray(callLog.evaluation.semanticResults?.evaluatedRubricItems)
+          .slice()
+          .sort((left, right) => (right.confidence || 0) - (left.confidence || 0)),
+        outOfScopeItems: ensureArray(callLog.evaluation.outOfScopeItems),
         overallScore: callLog.evaluation.overallScore,
         recommendations: ensureArray(callLog.evaluation.recommendations),
-        semanticResults: callLog.evaluation.semanticResults,
       }
       : null,
   }
