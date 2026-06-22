@@ -1,13 +1,13 @@
 import { buildRubricPrompt } from '../prompts/rubric-generator.js'
 import { buildEvaluationPrompt } from '../prompts/semantic-evaluator.js'
 
+import { computeAgentConfigHash } from '../utils/hashing.js'
 import { prisma } from './prisma.js'
 import { llmService } from './llm-service.js'
 import { runDeterministicEvaluation } from './deterministic-evaluator.js'
 
 const RUBRIC_MAX_TOKENS = 2000
 const SEMANTIC_EVAL_MAX_TOKENS = 3000
-const RUBRIC_CACHE_TOLERANCE_MS = 1000
 
 function createAppError(code, message) {
   const error = new Error(message)
@@ -125,12 +125,8 @@ function calculateOverallScore(items, rubric) {
   return roundScore((weightedTotals.score / weightedTotals.weight) * 100)
 }
 
-function isRubricFresh(agent) {
-  if (!agent.rubric || !agent.rubricGeneratedAt || !agent.updatedAt) {
-    return false
-  }
-
-  return agent.updatedAt.getTime() - agent.rubricGeneratedAt.getTime() <= RUBRIC_CACHE_TOLERANCE_MS
+function getAgentConfigHash(agent) {
+  return agent.configHash || computeAgentConfigHash(agent)
 }
 
 function buildDeterministicFindings(deterministicResults) {
@@ -230,8 +226,9 @@ async function loadCallForEvaluation(callLogId) {
 
 async function generateRubric(agentId) {
   const agent = await loadAgent(agentId)
+  const currentConfigHash = getAgentConfigHash(agent)
 
-  if (isRubricFresh(agent)) {
+  if (agent.rubric && currentConfigHash && currentConfigHash === agent.rubricConfigHash) {
     return agent.rubric
   }
 
@@ -264,7 +261,9 @@ async function generateRubric(agentId) {
 
   const updatedAgent = await prisma.agent.update({
     data: {
+      configHash: currentConfigHash,
       rubric: result.data,
+      rubricConfigHash: currentConfigHash,
       rubricGeneratedAt: new Date(),
     },
     where: {

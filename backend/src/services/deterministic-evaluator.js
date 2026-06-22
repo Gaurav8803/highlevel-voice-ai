@@ -3,6 +3,56 @@ const GREETING_THRESHOLD = 0.6
 const MAX_ALLOWED_GAP_SECONDS = 10
 const MAX_ALLOWED_RESPONSE_SECONDS = 5
 const MAX_CONSECUTIVE_AGENT_TURNS = 5
+const OUTCOME_CLAIM_PATTERNS = [
+  {
+    actionType: 'APPOINTMENT_BOOKING',
+    label: 'appointment booking',
+    patterns: [/i(?:['’]ve| have)? booked/i, /scheduled your/i],
+  },
+  {
+    actionType: 'SMS',
+    label: 'SMS',
+    patterns: [/i(?:['’]ve| have)? sent/i, /sending you/i, /i(?:['’]ll| will) send you/i],
+  },
+  {
+    actionType: 'CALL_TRANSFER',
+    label: 'call transfer',
+    patterns: [/i(?:['’]ll| will) transfer/i, /i(?:['’]ve| have)? transferred/i],
+  },
+  {
+    actionType: 'WORKFLOW_TRIGGER',
+    label: 'workflow action',
+    patterns: [/i(?:['’]ve| have)? logged/i, /created a ticket/i, /i(?:['’]ve| have)? forwarded/i],
+  },
+]
+const FAILURE_CLAIM_PATTERNS = [
+  {
+    actionType: 'SMS',
+    label: 'SMS',
+    patterns: [
+      /issue sending/i,
+      /failed to send/i,
+      /could(?:n'?t| not) send/i,
+      /problem sending/i,
+      /text(?: message)? (?:didn'?t|did not) send/i,
+    ],
+  },
+  {
+    actionType: 'APPOINTMENT_BOOKING',
+    label: 'appointment booking',
+    patterns: [/could(?:n'?t| not) book/i, /booking failed/i, /issue booking/i],
+  },
+  {
+    actionType: 'CALL_TRANSFER',
+    label: 'call transfer',
+    patterns: [/could(?:n'?t| not) transfer/i, /transfer failed/i, /issue transferring/i],
+  },
+  {
+    actionType: 'WORKFLOW_TRIGGER',
+    label: 'workflow action',
+    patterns: [/could(?:n'?t| not) create a ticket/i, /ticket failed/i, /issue forwarding/i],
+  },
+]
 
 function roundMetric(value) {
   return Number(value.toFixed(2))
@@ -94,6 +144,10 @@ function getWordMatchRatio(expectedText, actualText) {
 
 function normalizeComparisonValue(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function normalizeActionType(value) {
+  return String(value || '').toUpperCase()
 }
 
 function findMatchingAction(action, executedActions) {
@@ -257,6 +311,22 @@ function getTalkRatio(turns) {
   }
 
   return roundMetric(agentDuration / totalDuration)
+}
+
+function findExecutedActionsByType(executedActions, actionType) {
+  return executedActions.filter(
+    (executedAction) => normalizeActionType(executedAction.actionType) === actionType
+  )
+}
+
+function getMatchingOutcomePattern(text, patternDefinitions) {
+  for (const definition of patternDefinitions) {
+    if (definition.patterns.some((pattern) => pattern.test(text))) {
+      return definition
+    }
+  }
+
+  return null
 }
 
 function buildSummary(checks) {
@@ -466,13 +536,93 @@ function checkResponseLatency(turns) {
   })
 }
 
+function checkSpokenVsExecutedOutcomes(turns, executedActions) {
+  const normalizedExecutedActions = Array.isArray(executedActions) ? executedActions : []
+  const agentTurns = turns.filter((turn) => turn.role === 'agent')
+  const checks = []
+
+  for (const turn of agentTurns) {
+    const content = String(turn.content || '')
+    const lowercaseContent = content.toLowerCase()
+    const successPattern = getMatchingOutcomePattern(lowercaseContent, OUTCOME_CLAIM_PATTERNS)
+
+    if (successPattern) {
+      const matchingActions = findExecutedActionsByType(normalizedExecutedActions, successPattern.actionType)
+      const passed = matchingActions.length > 0
+
+      checks.push(createCheck({
+        category: 'actions',
+        checkId: `spoken_outcome_${successPattern.actionType.toLowerCase()}_${turn.index}`,
+        evidence: buildTurnEvidence(
+          turn,
+          {
+            actionType: successPattern.actionType,
+            claim: successPattern.label,
+          },
+          {
+            executedActions: matchingActions.map((action) => ({
+              actionName: action.actionName || null,
+              actionType: action.actionType || null,
+              executedAt: action.executedAt || null,
+            })),
+            text: content,
+          }
+        ),
+        label: `Spoken Outcome Matched Execution: ${successPattern.label}`,
+        passed,
+        recommendation: getFailedRecommendation(
+          `Agent claimed to perform ${successPattern.label}, but no matching ${successPattern.actionType} action was executed.`,
+          passed
+        ),
+      }))
+    }
+
+    const failurePattern = getMatchingOutcomePattern(lowercaseContent, FAILURE_CLAIM_PATTERNS)
+
+    if (failurePattern) {
+      const matchingActions = findExecutedActionsByType(normalizedExecutedActions, failurePattern.actionType)
+      const passed = matchingActions.length === 0
+
+      checks.push(createCheck({
+        category: 'actions',
+        checkId: `spoken_failure_${failurePattern.actionType.toLowerCase()}_${turn.index}`,
+        evidence: buildTurnEvidence(
+          turn,
+          {
+            actionType: failurePattern.actionType,
+            failureClaim: failurePattern.label,
+          },
+          {
+            executedActions: matchingActions.map((action) => ({
+              actionName: action.actionName || null,
+              actionType: action.actionType || null,
+              executedAt: action.executedAt || null,
+            })),
+            text: content,
+          }
+        ),
+        label: `Agent Failure Claim Aligned With Execution: ${failurePattern.label}`,
+        passed,
+        recommendation: getFailedRecommendation(
+          `${matchingActions[0]?.actionName || failurePattern.label} executed successfully, but the agent indicated failure to the user.`,
+          passed
+        ),
+      }))
+    }
+  }
+
+  return checks
+}
+
 async function runDeterministicEvaluation(callLog, agent) {
   const turns = Array.isArray(callLog.transcriptTurns) ? callLog.transcriptTurns : []
+  const executedActions = Array.isArray(callLog.executedActions) ? callLog.executedActions : []
   const checks = [
     checkGreetingDelivered(turns, agent),
     checkCallDuration(callLog, agent),
     ...checkActionsExecution(callLog, agent),
     ...checkDataExtraction(callLog, agent),
+    ...checkSpokenVsExecutedOutcomes(turns, executedActions),
     checkConversationFlow(turns),
     checkEndCallProper(turns),
     checkResponseLatency(turns),
@@ -492,5 +642,6 @@ export {
   checkEndCallProper,
   checkGreetingDelivered,
   checkResponseLatency,
+  checkSpokenVsExecutedOutcomes,
   runDeterministicEvaluation,
 }

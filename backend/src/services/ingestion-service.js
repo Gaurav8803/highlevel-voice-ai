@@ -1,5 +1,6 @@
 import { ghlClient } from './ghl-client.js'
 import { prisma } from './prisma.js'
+import { computeAgentConfigHash } from '../utils/hashing.js'
 
 function normalizeRole(value, turn) {
   const role = String(value || '').toLowerCase()
@@ -71,14 +72,22 @@ function getDateValue(callLog) {
 }
 
 function getAgentRecord(agent) {
+  const welcomeMessage = agent.welcomeMessage || agent.prompts?.welcomeMessage || ''
+
   return {
     actions: agent.actions ?? [],
     agentName: agent.agentName || agent.name || 'Unnamed Agent',
     agentPrompt: agent.agentPrompt || agent.prompt || '',
     businessName: agent.businessName || agent.business?.name || 'Unknown Business',
+    configHash: computeAgentConfigHash({
+      actions: agent.actions ?? [],
+      agentPrompt: agent.agentPrompt || agent.prompt || '',
+      welcomeMessage,
+    }),
     ghlAgentId: String(agent.id || agent.agentId),
     locationId: agent.locationId || ghlClient.locationId || '',
     rawConfig: agent,
+    welcomeMessage,
   }
 }
 
@@ -112,31 +121,65 @@ async function syncAgents() {
       },
     },
     select: {
+      agentName: true,
+      businessName: true,
+      configHash: true,
       ghlAgentId: true,
+      locationId: true,
     },
   })
 
-  const existingIds = getExistingIdSet(existingAgents, 'ghlAgentId')
+  const existingAgentsByGhlId = new Map(
+    existingAgents.map((agent) => [agent.ghlAgentId, agent])
+  )
   let createdCount = 0
   let updatedCount = 0
 
   for (const agent of agents) {
     const record = getAgentRecord(agent)
+    const existingAgent = existingAgentsByGhlId.get(record.ghlAgentId)
 
-    await prisma.agent.upsert({
-      create: record,
-      update: record,
-      where: {
-        ghlAgentId: record.ghlAgentId,
-      },
-    })
+    if (!existingAgent) {
+      await prisma.agent.create({
+        data: record,
+      })
 
-    if (existingIds.has(record.ghlAgentId)) {
-      updatedCount += 1
+      createdCount += 1
       continue
     }
 
-    createdCount += 1
+    const updateData = {}
+
+    if (existingAgent.agentName !== record.agentName) {
+      updateData.agentName = record.agentName
+    }
+
+    if (existingAgent.businessName !== record.businessName) {
+      updateData.businessName = record.businessName
+    }
+
+    if (existingAgent.locationId !== record.locationId) {
+      updateData.locationId = record.locationId
+    }
+
+    if (existingAgent.configHash !== record.configHash) {
+      updateData.actions = record.actions
+      updateData.agentPrompt = record.agentPrompt
+      updateData.configHash = record.configHash
+      updateData.rawConfig = record.rawConfig
+      updateData.welcomeMessage = record.welcomeMessage
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await prisma.agent.update({
+        data: updateData,
+        where: {
+          ghlAgentId: record.ghlAgentId,
+        },
+      })
+
+      updatedCount += 1
+    }
   }
 
   return {

@@ -14,8 +14,11 @@ model Agent {
   agentName         String
   businessName      String
   agentPrompt       String           @db.Text
+  welcomeMessage    String?          @db.Text
   actions           Json
+  configHash        String?
   rubric            Json?
+  rubricConfigHash  String?
   rubricGeneratedAt DateTime?
   rawConfig         Json
   createdAt         DateTime         @default(now())

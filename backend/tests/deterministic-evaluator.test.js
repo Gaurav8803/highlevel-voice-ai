@@ -8,9 +8,47 @@ import {
   checkEndCallProper,
   checkGreetingDelivered,
   checkResponseLatency,
+  checkSpokenVsExecutedOutcomes,
   runDeterministicEvaluation,
 } from '../src/services/deterministic-evaluator.js'
 import { createMayaFixture } from './fixtures/maya-call.js'
+
+function createAiSellsItselfFixture() {
+  return {
+    callLog: {
+      executedActions: [
+        {
+          actionName: 'Follow Up Text',
+          actionType: 'SMS',
+          executedAt: '2026-06-19T18:17:14.663Z',
+        },
+      ],
+      transcriptTurns: [
+        {
+          content: 'I’ll send you a quick text to schedule an AI Impact Assessment session.',
+          endTime: 286.586,
+          index: 19,
+          role: 'agent',
+          startTime: 268.498,
+        },
+        {
+          content: 'an issue sending the text. No worries, Rajesh!',
+          endTime: 295.467,
+          index: 21,
+          role: 'agent',
+          startTime: 286.621,
+        },
+        {
+          content: 'It looks like there was a technical issue on the backend while trying to send the text message.',
+          endTime: 311.402,
+          index: 23,
+          role: 'agent',
+          startTime: 301.174,
+        },
+      ],
+    },
+  }
+}
 
 describe('deterministic evaluator', function deterministicEvaluatorSuite() {
   it('passes the configured greeting check for Maya', function testGreetingCheck() {
@@ -81,6 +119,18 @@ describe('deterministic evaluator', function deterministicEvaluatorSuite() {
     expect(check.passed).toBe(true)
     expect(check.evidence.actual.maxResponseTime).toBeLessThanOrEqual(5)
     expect(check.evidence.actual.slowResponses).toEqual([])
+  })
+
+  it('flags when the agent says an SMS failed even though the SMS action executed', function testSpokenOutcomeMismatchCheck() {
+    const { callLog } = createAiSellsItselfFixture()
+    const checks = checkSpokenVsExecutedOutcomes(callLog.transcriptTurns, callLog.executedActions)
+    const successClaimCheck = checks.find((check) => check.checkId === 'spoken_outcome_sms_19')
+    const failureClaimCheck = checks.find((check) => check.checkId === 'spoken_failure_sms_21')
+
+    expect(successClaimCheck?.passed).toBe(true)
+    expect(failureClaimCheck?.passed).toBe(false)
+    expect(failureClaimCheck?.evidence.turnIndices).toEqual([21])
+    expect(failureClaimCheck?.recommendation).toContain('executed successfully')
   })
 
   it('aggregates the deterministic evaluation summary with the expected Maya failures', async function testRunDeterministicEvaluation() {
