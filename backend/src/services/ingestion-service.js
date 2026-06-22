@@ -88,7 +88,7 @@ function getCallRecord(callLog, agentId, turns) {
     calledAt: getDateValue(callLog),
     contactId: String(callLog.contactId || callLog.contact?.id || ''),
     duration: Number(callLog.duration || callLog.callDuration || 0),
-    executedActions: callLog.executedActions ?? [],
+    executedActions: callLog.executedActions ?? callLog.executedCallActions ?? [],
     extractedData: callLog.extractedData ?? {},
     ghlCallId: String(callLog.id || callLog.callId),
     rawResponse: callLog,

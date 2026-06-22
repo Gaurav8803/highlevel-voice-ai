@@ -1,3 +1,7 @@
+import { fileURLToPath } from 'node:url'
+
+const envFilePath = fileURLToPath(new URL('../../.env', import.meta.url))
+
 const envSchema = {
   type: 'object',
   required: ['DATABASE_URL', 'GHL_PIT_TOKEN', 'GHL_LOCATION_ID', 'ANTHROPIC_API_KEY'],
@@ -32,7 +36,9 @@ const envSchema = {
 const envOptions = {
   confKey: 'config',
   data: process.env,
-  dotenv: true,
+  dotenv: {
+    path: envFilePath,
+  },
   schema: envSchema,
 }
 
