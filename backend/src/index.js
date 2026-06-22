@@ -5,10 +5,6 @@ import fastifyEnv from '@fastify/env'
 import Fastify from 'fastify'
 
 import { envOptions, getConfig } from './config.js'
-import analysisRoutes from './routes/analysis.js'
-import agentsRoutes from './routes/agents.js'
-import callsRoutes from './routes/calls.js'
-import dashboardRoutes from './routes/dashboard.js'
 
 const app = Fastify({
   logger: true,
@@ -17,6 +13,28 @@ const app = Fastify({
 await app.register(fastifyEnv, envOptions)
 await app.register(cors, {
   origin: true,
+})
+
+const [
+  { default: analysisRoutes },
+  { default: agentsRoutes },
+  { default: callsRoutes },
+  { default: dashboardRoutes },
+  { ghlClient },
+  { prisma },
+] = await Promise.all([
+  import('./routes/analysis.js'),
+  import('./routes/agents.js'),
+  import('./routes/calls.js'),
+  import('./routes/dashboard.js'),
+  import('./services/ghl-client.js'),
+  import('./services/prisma.js'),
+])
+
+ghlClient.setLogger(app.log)
+
+app.addHook('onClose', async function disconnectPrisma() {
+  await prisma.$disconnect()
 })
 
 await app.register(async function apiRoutes(api) {
