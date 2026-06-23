@@ -62,8 +62,8 @@ function createCheck({ checkId, category, label, passed, evidence, recommendatio
   return {
     category,
     checkId,
-    confidence: 1,
     evidence,
+    evidenceStrength: 'strong',
     label,
     passed,
     recommendation,

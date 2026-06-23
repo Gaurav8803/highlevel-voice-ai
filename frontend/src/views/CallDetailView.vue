@@ -210,7 +210,7 @@
                     :key="findingKey(finding)"
                     :finding="finding"
                     :selected="selectedFindingKey === findingKey(finding)"
-                    show-confidence
+                    show-evidence-strength
                     @select="selectFinding"
                   />
                 </div>
@@ -240,7 +240,7 @@
                     :key="findingKey(finding)"
                     :finding="finding"
                     :selected="selectedFindingKey === findingKey(finding)"
-                    show-confidence
+                    show-evidence-strength
                     @select="selectFinding"
                   />
                 </div>

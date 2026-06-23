@@ -280,7 +280,7 @@
           </div>
 
           <div
-            v-else
+            v-else-if="activeTab === 'recommendations'"
             class="space-y-4"
           >
             <div
@@ -334,6 +334,56 @@
               v-else
               description="Recommendations will populate once this agent has semantic evaluations."
               title="No recommendations available yet"
+            />
+          </div>
+
+          <div
+            v-else
+            class="space-y-6"
+          >
+            <article class="rounded-lg border border-border bg-surface-tertiary p-5">
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-3xl">
+                  <h2 class="text-base font-semibold text-content-primary">
+                    Rubric Goal Summary
+                  </h2>
+                  <p class="mt-3 text-sm leading-6 text-content-secondary">
+                    {{ rubric?.agentGoalSummary || 'Rubric generation has not completed for this agent yet.' }}
+                  </p>
+                </div>
+                <div class="rounded-lg bg-white px-4 py-3 text-sm text-content-secondary">
+                  <span class="font-semibold text-content-primary">{{ rubricItems.length }}</span> rubric items
+                </div>
+              </div>
+
+              <div
+                v-if="rubricPrimaryGoals.length"
+                class="mt-5 flex flex-wrap gap-2"
+              >
+                <span
+                  v-for="goal in rubricPrimaryGoals"
+                  :key="goal"
+                  class="rounded-full bg-white px-3 py-1.5 text-sm font-medium text-content-secondary"
+                >
+                  {{ goal }}
+                </span>
+              </div>
+            </article>
+
+            <div
+              v-if="rubricItems.length"
+              class="grid gap-4"
+            >
+              <RubricItemCard
+                v-for="item in rubricItems"
+                :key="item.id"
+                :item="item"
+              />
+            </div>
+            <EmptyState
+              v-else
+              description="Generate or refresh the rubric to render the agent evaluation contract here."
+              title="No rubric items available yet"
             />
           </div>
         </div>
@@ -392,6 +442,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import CategoryBadge from '../components/dashboard/CategoryBadge.vue'
 import EmptyState from '../components/dashboard/EmptyState.vue'
+import RubricItemCard from '../components/dashboard/RubricItemCard.vue'
 import ScoreBadge from '../components/dashboard/ScoreBadge.vue'
 import { useAgent } from '../composables/useAgent.js'
 import { formatDateTime, formatDuration, formatShortDate } from '../utils/formatters.js'
@@ -400,7 +451,7 @@ const route = useRoute()
 const router = useRouter()
 const { data, error, generateRubric, load, loading, rubricError, rubricLoading } = useAgent()
 const activeTab = ref('metrics')
-const tabs = ['metrics', 'findings', 'recommendations']
+const tabs = ['metrics', 'findings', 'recommendations', 'rubric']
 const isEmbedded = computed(() => route.query.embedded === 'true' || window.__VOICE_AI_EMBED__?.embedded === true)
 
 const agentDetail = computed(() => data.value)
@@ -432,6 +483,9 @@ const rubricSummary = computed(() => {
 
   return `${rubric.agentGoalSummary} Primary goals: ${(rubric.primaryGoals || []).join(', ')}.`
 })
+const rubric = computed(() => agentDetail.value?.agent?.rubric || null)
+const rubricItems = computed(() => Array.isArray(rubric.value?.rubric) ? rubric.value.rubric : [])
+const rubricPrimaryGoals = computed(() => Array.isArray(rubric.value?.primaryGoals) ? rubric.value.primaryGoals : [])
 const sortedRecommendations = computed(() => {
   const recommendations = agentDetail.value?.topRecommendations || []
   return [...recommendations].sort((left, right) => {

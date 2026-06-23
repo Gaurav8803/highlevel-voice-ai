@@ -14,6 +14,7 @@ function buildEvaluationPrompt(agent, rubric, normalizedTranscript, deterministi
     'You will receive the full agent rubric, transcript, and deterministic evaluation context.',
     'Not every rubric item applies to every call.',
     'Only evaluate rubric items where the conversation path created an opportunity for that item to be relevant.',
+    'Use each rubric item\'s applicability, triggerCondition, and outOfScopeCondition to decide whether it should be evaluated or marked out-of-scope.',
     'If a rubric item is about handling objections but no objection was raised, mark it as out-of-scope, not as passed.',
     'A billing-related rubric item should be out-of-scope for a new lead call with no billing discussion.',
     'Evaluate only the relevant rubric items for this specific call.',
@@ -21,6 +22,7 @@ function buildEvaluationPrompt(agent, rubric, normalizedTranscript, deterministi
     'Include emergentFindings only for issues or missed opportunities not covered by the rubric.',
     'Every evaluatedRubricItem and emergentFinding must include transcript evidence with turnIndices or quotes.',
     'If you cannot provide evidence, do not include the finding.',
+    'For rubric items with evaluationMode "structured_evidence", pay close attention to extracted data, action logs, and explicit transcript evidence rather than subjective interpretation.',
     'For rubric-backed and out-of-scope items, rubricItemId must exactly match one rubric item id from the provided rubric JSON.',
     'Do not invent, rename, or paraphrase rubric item ids.',
     'Output valid JSON only.',
@@ -33,7 +35,7 @@ function buildEvaluationPrompt(agent, rubric, normalizedTranscript, deterministi
       evaluatedRubricItems: [
         {
           category: 'communication',
-          confidence: 0.84,
+          evidenceStrength: 'strong',
           evidence: {
             quotes: ['exact transcript quote'],
             reasoning: 'why this is a pass or fail',
@@ -56,7 +58,7 @@ function buildEvaluationPrompt(agent, rubric, normalizedTranscript, deterministi
       emergentFindings: [
         {
           category: 'communication',
-          confidence: 0.85,
+          evidenceStrength: 'medium',
           evidence: {
             quotes: ['exact transcript quote'],
             reasoning: 'why this is a problem',
@@ -82,8 +84,9 @@ function buildEvaluationPrompt(agent, rubric, normalizedTranscript, deterministi
     }, null, 2),
     'Quotes must be exact snippets copied from the transcript.',
     'Allowed status values: passed, failed, partially_met, uncertain.',
+    'Allowed evidenceStrength values: strong, medium, weak.',
     'Use uncertain only when the transcript is genuinely ambiguous.',
-    'Mark requiresLlm:false rubric items as relevant only when the call actually created an opportunity for them.',
+    'Not every rubric item will apply to every call, even if it exists in the master rubric.',
   ].join('\n')
 
   const user = [

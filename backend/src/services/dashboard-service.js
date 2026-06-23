@@ -18,6 +18,57 @@ function roundMetric(value) {
   return Number(value.toFixed(2))
 }
 
+function getEvidenceStrengthRank(finding) {
+  const evidenceStrength = finding?.evidenceStrength
+
+  if (evidenceStrength === 'strong') {
+    return 3
+  }
+
+  if (evidenceStrength === 'medium') {
+    return 2
+  }
+
+  if (evidenceStrength === 'weak') {
+    return 1
+  }
+
+  const confidence = finding?.confidence
+
+  if (typeof confidence === 'number' && Number.isFinite(confidence)) {
+    return confidence
+  }
+
+  return 0
+}
+
+function normalizeFindingEvidenceStrength(finding) {
+  if (!finding || typeof finding !== 'object') {
+    return finding
+  }
+
+  if (finding.evidenceStrength) {
+    return finding
+  }
+
+  const confidence = finding.confidence
+  let evidenceStrength = 'weak'
+
+  if (typeof confidence === 'number' && Number.isFinite(confidence)) {
+    if (confidence >= 0.8) {
+      evidenceStrength = 'strong'
+    } else if (confidence >= 0.5) {
+      evidenceStrength = 'medium'
+    }
+  }
+
+  return {
+    ...finding,
+    confidence: undefined,
+    evidenceStrength,
+  }
+}
+
 function average(values) {
   if (values.length === 0) {
     return 0
@@ -463,12 +514,14 @@ async function getCallDashboard(callId) {
       ? {
         callPath: callLog.evaluation.callPath,
         emergentFindings: ensureArray(callLog.evaluation.semanticResults?.emergentFindings)
+          .map(normalizeFindingEvidenceStrength)
           .slice()
-          .sort((left, right) => (right.confidence || 0) - (left.confidence || 0)),
+          .sort((left, right) => getEvidenceStrengthRank(right) - getEvidenceStrengthRank(left)),
         evaluatedAt: callLog.evaluation.evaluatedAt,
         evaluatedRubricItems: ensureArray(callLog.evaluation.semanticResults?.evaluatedRubricItems)
+          .map(normalizeFindingEvidenceStrength)
           .slice()
-          .sort((left, right) => (right.confidence || 0) - (left.confidence || 0)),
+          .sort((left, right) => getEvidenceStrengthRank(right) - getEvidenceStrengthRank(left)),
         outOfScopeItems: ensureArray(callLog.evaluation.outOfScopeItems),
         overallScore: callLog.evaluation.overallScore,
         recommendations: ensureArray(callLog.evaluation.recommendations),

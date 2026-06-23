@@ -31,18 +31,17 @@
           {{ finding.recommendation }}
         </p>
         <div
-          v-if="showConfidence"
+          v-if="showEvidenceStrength"
           class="mt-3"
         >
           <div class="mb-1 flex items-center justify-between text-xs text-content-tertiary">
-            <span>Confidence</span>
-            <span>{{ confidenceLabel }}</span>
-          </div>
-          <div class="h-1.5 rounded-full bg-slate-100">
-            <div
-              class="h-1.5 rounded-full bg-primary"
-              :style="{ width: confidenceWidth }"
-            />
+            <span>Evidence Strength</span>
+            <span
+              :class="evidenceStrengthClass"
+              class="rounded-full px-2 py-0.5 font-medium"
+            >
+              {{ evidenceStrengthLabel }}
+            </span>
           </div>
         </div>
       </div>
@@ -103,7 +102,7 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  showConfidence: {
+  showEvidenceStrength: {
     type: Boolean,
     default: false,
   },
@@ -132,8 +131,49 @@ const status = computed(() => {
   return 'warn'
 })
 
-const confidenceWidth = computed(() => `${Math.round((props.finding.confidence || 0) * 100)}%`)
-const confidenceLabel = computed(() => `${Math.round((props.finding.confidence || 0) * 100)}%`)
+const evidenceStrength = computed(() => {
+  if (props.finding.evidenceStrength) {
+    return props.finding.evidenceStrength
+  }
+
+  const confidence = props.finding.confidence
+
+  if (typeof confidence === 'number') {
+    if (confidence >= 0.8) {
+      return 'strong'
+    }
+
+    if (confidence >= 0.5) {
+      return 'medium'
+    }
+  }
+
+  return 'weak'
+})
+
+const evidenceStrengthClass = computed(() => {
+  if (evidenceStrength.value === 'strong') {
+    return 'bg-emerald-100 text-emerald-700'
+  }
+
+  if (evidenceStrength.value === 'medium') {
+    return 'bg-amber-100 text-amber-700'
+  }
+
+  return 'bg-rose-100 text-rose-700'
+})
+
+const evidenceStrengthLabel = computed(() => {
+  if (evidenceStrength.value === 'strong') {
+    return 'Strong'
+  }
+
+  if (evidenceStrength.value === 'medium') {
+    return 'Medium'
+  }
+
+  return 'Weak'
+})
 const evidenceRows = computed(() => {
   const evidence = props.finding.evidence || {}
   const rows = []

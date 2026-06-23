@@ -8,12 +8,15 @@ import { runDeterministicEvaluation } from './deterministic-evaluator.js'
 
 const RUBRIC_MAX_TOKENS = 8000
 const SEMANTIC_EVAL_MAX_TOKENS = 8000
+const VALID_EVALUATION_MODES = new Set(['semantic', 'structured_evidence'])
+const VALID_EVIDENCE_REQUIRED = new Set(['transcript', 'extracted_data', 'actions', 'any'])
 const RUBRIC_SEVERITY_WEIGHTS = {
   critical: 4,
   high: 3,
   low: 1,
   medium: 2,
 }
+const VALID_EVIDENCE_STRENGTHS = new Set(['strong', 'medium', 'weak'])
 const VALID_EVALUATION_STATUSES = new Set(['passed', 'failed', 'partially_met', 'uncertain'])
 
 function createAppError(code, message) {
@@ -39,9 +42,16 @@ function isValidRubricItem(item) {
     typeof item.checkType === 'string' &&
     typeof item.successCondition === 'string' &&
     typeof item.failureCondition === 'string' &&
-    typeof item.evidenceRequired === 'string' &&
+    typeof item.applicability === 'string' &&
+    typeof item.triggerCondition === 'string' &&
+    typeof item.outOfScopeCondition === 'string' &&
+    typeof item.recommendationHint === 'string' &&
+    VALID_EVALUATION_MODES.has(item.evaluationMode) &&
+    Array.isArray(item.evidenceRequired) &&
+    item.evidenceRequired.length > 0 &&
+    item.evidenceRequired.every((entry) => VALID_EVIDENCE_REQUIRED.has(entry)) &&
     typeof item.severity === 'string' &&
-    typeof item.requiresLlm === 'boolean'
+    item.id.length > 0
 }
 
 function assertValidRubric(rubric) {
@@ -70,9 +80,7 @@ function isValidSemanticFinding(finding) {
     typeof finding.label === 'string' &&
     typeof finding.severity === 'string' &&
     VALID_EVALUATION_STATUSES.has(finding.status) &&
-    typeof finding.confidence === 'number' &&
-    finding.confidence >= 0 &&
-    finding.confidence <= 1 &&
+    VALID_EVIDENCE_STRENGTHS.has(finding.evidenceStrength) &&
     isObject(finding.evidence) &&
     (
       finding.recommendation === undefined ||
@@ -95,9 +103,7 @@ function isValidEmergentFinding(finding) {
     typeof finding.category === 'string' &&
     typeof finding.severity === 'string' &&
     VALID_EVALUATION_STATUSES.has(finding.status) &&
-    typeof finding.confidence === 'number' &&
-    finding.confidence >= 0 &&
-    finding.confidence <= 1 &&
+    VALID_EVIDENCE_STRENGTHS.has(finding.evidenceStrength) &&
     isObject(finding.evidence) &&
     (
       finding.recommendation === undefined ||
@@ -242,8 +248,8 @@ function normalizePassedStatus(status) {
 function normalizeEvaluatedRubricItem(item) {
   return {
     category: item.category,
-    confidence: item.confidence,
     evidence: item.evidence,
+    evidenceStrength: item.evidenceStrength,
     label: item.label,
     passed: normalizePassedStatus(item.status),
     recommendation: item.recommendation,
@@ -258,8 +264,8 @@ function normalizeEvaluatedRubricItem(item) {
 function normalizeEmergentFinding(item) {
   return {
     category: item.category,
-    confidence: item.confidence,
     evidence: item.evidence,
+    evidenceStrength: item.evidenceStrength,
     id: item.id,
     label: item.label,
     passed: normalizePassedStatus(item.status),

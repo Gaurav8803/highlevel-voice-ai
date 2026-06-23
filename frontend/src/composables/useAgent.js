@@ -28,7 +28,7 @@ export function useAgent() {
     rubricError.value = ''
 
     try {
-      await apiRequest(`/agents/${agentId}/generate-rubric`, {
+      await apiRequest(`/agents/${agentId}/rubric/regenerate`, {
         method: 'POST',
       })
       await load(agentId)
