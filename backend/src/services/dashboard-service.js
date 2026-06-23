@@ -3,6 +3,12 @@ import { syncAgents, syncCallLogs } from './ingestion-service.js'
 import { prisma } from './prisma.js'
 
 const TREND_DELTA_THRESHOLD = 5
+const SEVERITY_PRIORITY = {
+  critical: 1,
+  high: 2,
+  medium: 3,
+  low: 4,
+}
 
 function createAppError(code, message) {
   const error = new Error(message)
@@ -83,6 +89,22 @@ function getNumericValues(values) {
 
 function getFindingLabel(finding) {
   return finding?.label || null
+}
+
+function getUseActionType(finding) {
+  if (finding?.category === 'communication' || finding?.category === 'objection_handling') {
+    return 'script_training'
+  }
+
+  if (finding?.category === 'routing' || finding?.category === 'compliance') {
+    return 'human_intervention'
+  }
+
+  return 'workflow_fix'
+}
+
+function getSeverityPriority(value) {
+  return SEVERITY_PRIORITY[value] || Number.POSITIVE_INFINITY
 }
 
 function getFailedFindings(findings) {
@@ -275,6 +297,68 @@ function buildTopRecommendations(evaluations) {
   })
 }
 
+function buildCallUseActions(evaluation) {
+  return getFailedFindings(evaluation?.findings).map((finding, index) => ({
+    actionType: getUseActionType(finding),
+    finding: finding.label,
+    id: `${finding.rubricItemId || finding.id || finding.label}-${index}`,
+    quotes: ensureArray(finding.evidence?.quotes).slice(0, 2),
+    recommendation: finding.recommendation || finding.evidence?.reasoning || 'Review this call segment and update the script or workflow.',
+    severity: finding.severity || null,
+    status: finding.status || (finding.passed === false ? 'failed' : 'uncertain'),
+    turnIndices: ensureArray(finding.evidence?.turnIndices).slice(0, 6),
+  }))
+}
+
+function buildAgentUseActions(evaluations) {
+  const counts = new Map()
+
+  for (const evaluation of evaluations) {
+    for (const action of buildCallUseActions(evaluation)) {
+      const key = `${action.actionType}::${action.finding}`
+      const current = counts.get(key) || {
+        actionType: action.actionType,
+        affectedCalls: 0,
+        finding: action.finding,
+        quotes: action.quotes,
+        recommendation: action.recommendation,
+        severity: action.severity,
+        turnIndices: action.turnIndices,
+      }
+
+      current.affectedCalls += 1
+
+      if (getSeverityPriority(action.severity) < getSeverityPriority(current.severity)) {
+        current.severity = action.severity
+      }
+
+      if (current.quotes.length === 0 && action.quotes.length > 0) {
+        current.quotes = action.quotes
+      }
+
+      if (current.turnIndices.length === 0 && action.turnIndices.length > 0) {
+        current.turnIndices = action.turnIndices
+      }
+
+      counts.set(key, current)
+    }
+  }
+
+  return [...counts.values()].sort((left, right) => {
+    const severityDelta = getSeverityPriority(left.severity) - getSeverityPriority(right.severity)
+
+    if (severityDelta !== 0) {
+      return severityDelta
+    }
+
+    if (left.affectedCalls !== right.affectedCalls) {
+      return right.affectedCalls - left.affectedCalls
+    }
+
+    return left.finding.localeCompare(right.finding)
+  })
+}
+
 function getAverageResponseLatency(evaluations) {
   const checks = extractCheckGroups(evaluations, (check) => check.checkId === 'response_latency')
   const values = getNumericValues(checks.map((check) => check.evidence?.actual?.averageResponseTime))
@@ -458,6 +542,7 @@ async function getAgentDashboard(agentId) {
     },
     recentEvaluations: evaluations.slice(0, 10).map(buildRecentEvaluationSummary),
     topRecommendations: buildTopRecommendations(evaluations),
+    useActions: buildAgentUseActions(evaluations),
   }
 }
 
@@ -525,6 +610,7 @@ async function getCallDashboard(callId) {
         outOfScopeItems: ensureArray(callLog.evaluation.outOfScopeItems),
         overallScore: callLog.evaluation.overallScore,
         recommendations: ensureArray(callLog.evaluation.recommendations),
+        useActions: buildCallUseActions(callLog.evaluation),
       }
       : null,
   }

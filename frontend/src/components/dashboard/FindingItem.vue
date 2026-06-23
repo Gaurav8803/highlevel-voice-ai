@@ -16,6 +16,12 @@
           <p class="text-sm font-semibold text-content-primary">
             {{ finding.label }}
           </p>
+          <span
+            :class="statusBadgeClass"
+            class="rounded-full px-2.5 py-1 text-xs font-semibold"
+          >
+            {{ statusLabel }}
+          </span>
           <CategoryBadge :category="finding.category" />
           <span
             v-if="finding.source === 'llm_semantic'"
@@ -129,6 +135,28 @@ const status = computed(() => {
   }
 
   return 'warn'
+})
+const statusBadgeClass = computed(() => {
+  if (status.value === 'pass') {
+    return 'bg-emerald-100 text-emerald-700'
+  }
+
+  if (status.value === 'fail') {
+    return 'bg-rose-100 text-rose-700'
+  }
+
+  return 'bg-amber-100 text-amber-700'
+})
+const statusLabel = computed(() => {
+  if (status.value === 'pass') {
+    return 'Passed'
+  }
+
+  if (status.value === 'fail') {
+    return 'Needs attention'
+  }
+
+  return 'Uncertain'
 })
 
 const evidenceStrength = computed(() => {

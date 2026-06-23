@@ -201,18 +201,84 @@
                     {{ evaluatedRubricItems.length }} items
                   </span>
                 </div>
+                <div class="mb-4 grid gap-3 md:grid-cols-3">
+                  <div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-700">
+                      Needs Attention
+                    </p>
+                    <p class="mt-2 text-2xl font-semibold text-rose-700">
+                      {{ attentionRubricItems.length }}
+                    </p>
+                  </div>
+                  <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                      Passed
+                    </p>
+                    <p class="mt-2 text-2xl font-semibold text-emerald-700">
+                      {{ passedRubricItems.length }}
+                    </p>
+                  </div>
+                  <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                      Uncertain
+                    </p>
+                    <p class="mt-2 text-2xl font-semibold text-amber-700">
+                      {{ uncertainRubricItems.length }}
+                    </p>
+                  </div>
+                </div>
                 <div
                   v-if="evaluatedRubricItems.length"
                   class="space-y-3"
                 >
-                  <FindingItem
-                    v-for="finding in evaluatedRubricItems"
-                    :key="findingKey(finding)"
-                    :finding="finding"
-                    :selected="selectedFindingKey === findingKey(finding)"
-                    show-evidence-strength
-                    @select="selectFinding"
-                  />
+                  <div
+                    v-if="attentionRubricItems.length"
+                    class="space-y-3"
+                  >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-700">
+                      Needs Attention
+                    </p>
+                    <FindingItem
+                      v-for="finding in attentionRubricItems"
+                      :key="findingKey(finding)"
+                      :finding="finding"
+                      :selected="selectedFindingKey === findingKey(finding)"
+                      show-evidence-strength
+                      @select="selectFinding"
+                    />
+                  </div>
+                  <div
+                    v-if="passedRubricItems.length"
+                    class="space-y-3"
+                  >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                      Passed
+                    </p>
+                    <FindingItem
+                      v-for="finding in passedRubricItems"
+                      :key="findingKey(finding)"
+                      :finding="finding"
+                      :selected="selectedFindingKey === findingKey(finding)"
+                      show-evidence-strength
+                      @select="selectFinding"
+                    />
+                  </div>
+                  <div
+                    v-if="uncertainRubricItems.length"
+                    class="space-y-3"
+                  >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                      Uncertain
+                    </p>
+                    <FindingItem
+                      v-for="finding in uncertainRubricItems"
+                      :key="findingKey(finding)"
+                      :finding="finding"
+                      :selected="selectedFindingKey === findingKey(finding)"
+                      show-evidence-strength
+                      @select="selectFinding"
+                    />
+                  </div>
                 </div>
                 <p
                   v-else
@@ -296,6 +362,62 @@
               <section>
                 <div class="mb-3 flex items-center justify-between">
                   <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
+                    Use Actions
+                  </h3>
+                  <span class="text-xs text-content-secondary">
+                    {{ useActions.length }} items
+                  </span>
+                </div>
+                <div
+                  v-if="useActions.length"
+                  class="space-y-3"
+                >
+                  <button
+                    v-for="action in useActions"
+                    :key="action.id"
+                    class="w-full rounded-lg border border-border bg-surface-tertiary p-4 text-left hover:border-primary"
+                    type="button"
+                    @click="selectUseAction(action)"
+                  >
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span
+                        :class="useActionTone(action.actionType)"
+                        class="rounded-full px-2.5 py-1 text-xs font-semibold"
+                      >
+                        {{ useActionLabel(action.actionType) }}
+                      </span>
+                      <span
+                        v-if="action.severity"
+                        class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-content-secondary"
+                      >
+                        {{ humanizeCategory(action.severity) }}
+                      </span>
+                    </div>
+                    <h4 class="mt-3 text-sm font-semibold text-content-primary">
+                      {{ action.finding }}
+                    </h4>
+                    <p class="mt-2 text-sm leading-6 text-content-secondary">
+                      {{ action.recommendation }}
+                    </p>
+                    <p
+                      v-if="action.turnIndices?.length"
+                      class="mt-2 text-xs text-content-tertiary"
+                    >
+                      Turns: {{ action.turnIndices.join(', ') }}
+                    </p>
+                  </button>
+                </div>
+                <p
+                  v-else
+                  class="text-sm text-content-secondary"
+                >
+                  No action-oriented intervention items were generated for this call.
+                </p>
+              </section>
+
+              <section>
+                <div class="mb-3 flex items-center justify-between">
+                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
                     Recommendations
                   </h3>
                   <span class="text-xs text-content-secondary">
@@ -348,7 +470,7 @@ import FindingItem from '../components/dashboard/FindingItem.vue'
 import ScoreBadge from '../components/dashboard/ScoreBadge.vue'
 import TranscriptBubble from '../components/dashboard/TranscriptBubble.vue'
 import { useCall } from '../composables/useCall.js'
-import { formatDateTime, formatDuration, formatScore, getScoreTone } from '../utils/formatters.js'
+import { formatDateTime, formatDuration, formatScore, getScoreTone, humanizeCategory } from '../utils/formatters.js'
 
 const route = useRoute()
 const { data, error, evaluate, evaluationError, evaluationLoading, load, loading } = useCall()
@@ -364,6 +486,9 @@ const evaluatedRubricItems = computed(() => (
     source: 'llm_semantic',
   }))
 ))
+const attentionRubricItems = computed(() => evaluatedRubricItems.value.filter((item) => item.passed === false))
+const passedRubricItems = computed(() => evaluatedRubricItems.value.filter((item) => item.passed === true))
+const uncertainRubricItems = computed(() => evaluatedRubricItems.value.filter((item) => item.passed === null))
 const emergentFindings = computed(() => (
   (callDetail.value?.evaluation?.emergentFindings || []).map((item) => ({
     ...item,
@@ -373,6 +498,7 @@ const emergentFindings = computed(() => (
 ))
 const outOfScopeItems = computed(() => callDetail.value?.evaluation?.outOfScopeItems || [])
 const recommendations = computed(() => callDetail.value?.evaluation?.recommendations || [])
+const useActions = computed(() => callDetail.value?.evaluation?.useActions || [])
 const turns = computed(() => callDetail.value?.call?.transcriptTurns || [])
 const activeTurnIndices = computed(() => selectedFinding.value?.evidence?.turnIndices || [])
 const selectedFindingKey = computed(() => (selectedFinding.value ? findingKey(selectedFinding.value) : ''))
@@ -445,6 +571,39 @@ function setTurnRef(index, element) {
 
 function selectFinding(finding) {
   selectedFinding.value = finding
+}
+
+function selectUseAction(action) {
+  selectedFinding.value = {
+    evidence: {
+      turnIndices: action.turnIndices || [],
+    },
+    label: action.finding,
+  }
+}
+
+function useActionLabel(actionType) {
+  if (actionType === 'human_intervention') {
+    return 'Human intervention'
+  }
+
+  if (actionType === 'script_training') {
+    return 'Script training'
+  }
+
+  return 'Workflow fix'
+}
+
+function useActionTone(actionType) {
+  if (actionType === 'human_intervention') {
+    return 'bg-rose-100 text-rose-700'
+  }
+
+  if (actionType === 'script_training') {
+    return 'bg-amber-100 text-amber-700'
+  }
+
+  return 'bg-sky-100 text-sky-700'
 }
 
 function reload() {

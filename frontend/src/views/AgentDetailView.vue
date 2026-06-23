@@ -281,8 +281,77 @@
 
           <div
             v-else-if="activeTab === 'recommendations'"
-            class="space-y-4"
+            class="space-y-6"
           >
+            <section>
+              <div class="mb-3 flex items-center justify-between">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
+                  Use Actions
+                </h2>
+                <span class="text-xs text-content-secondary">
+                  {{ agentUseActions.length }} items
+                </span>
+              </div>
+              <div
+                v-if="agentUseActions.length"
+                class="grid gap-4"
+              >
+                <article
+                  v-for="action in agentUseActions"
+                  :key="`${action.actionType}-${action.finding}`"
+                  class="rounded-lg border border-border bg-surface-tertiary p-5"
+                >
+                  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span
+                          :class="useActionTone(action.actionType)"
+                          class="rounded-full px-2.5 py-1 text-xs font-semibold"
+                        >
+                          {{ useActionLabel(action.actionType) }}
+                        </span>
+                        <span
+                          v-if="action.severity"
+                          class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-content-secondary"
+                        >
+                          {{ humanizeCategory(action.severity) }}
+                        </span>
+                      </div>
+                      <h3 class="mt-3 text-base font-semibold text-content-primary">
+                        {{ action.finding }}
+                      </h3>
+                      <p class="mt-2 text-sm leading-6 text-content-secondary">
+                        {{ action.recommendation }}
+                      </p>
+                      <p
+                        v-if="action.quotes?.length"
+                        class="mt-3 text-sm text-content-tertiary"
+                      >
+                        {{ action.quotes.join(' | ') }}
+                      </p>
+                    </div>
+                    <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-sm font-medium text-content-secondary">
+                      {{ action.affectedCalls }} calls
+                    </span>
+                  </div>
+                </article>
+              </div>
+              <EmptyState
+                v-else
+                description="Use actions will populate once failed findings are aggregated across this agent's call history."
+                title="No use actions available yet"
+              />
+            </section>
+
+            <section class="space-y-4">
+              <div class="mb-3 flex items-center justify-between">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
+                  Aggregated Recommendations
+                </h2>
+                <span class="text-xs text-content-secondary">
+                  {{ sortedRecommendations.length }} items
+                </span>
+              </div>
             <div
               v-if="sortedRecommendations.length"
               class="grid gap-4"
@@ -335,6 +404,7 @@
               description="Recommendations will populate once this agent has semantic evaluations."
               title="No recommendations available yet"
             />
+            </section>
           </div>
 
           <div
@@ -445,7 +515,7 @@ import EmptyState from '../components/dashboard/EmptyState.vue'
 import RubricItemCard from '../components/dashboard/RubricItemCard.vue'
 import ScoreBadge from '../components/dashboard/ScoreBadge.vue'
 import { useAgent } from '../composables/useAgent.js'
-import { formatDateTime, formatDuration, formatShortDate } from '../utils/formatters.js'
+import { formatDateTime, formatDuration, formatShortDate, humanizeCategory } from '../utils/formatters.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -486,6 +556,7 @@ const rubricSummary = computed(() => {
 const rubric = computed(() => agentDetail.value?.agent?.rubric || null)
 const rubricItems = computed(() => Array.isArray(rubric.value?.rubric) ? rubric.value.rubric : [])
 const rubricPrimaryGoals = computed(() => Array.isArray(rubric.value?.primaryGoals) ? rubric.value.primaryGoals : [])
+const agentUseActions = computed(() => agentDetail.value?.useActions || [])
 const sortedRecommendations = computed(() => {
   const recommendations = agentDetail.value?.topRecommendations || []
   return [...recommendations].sort((left, right) => {
@@ -535,6 +606,30 @@ function reload() {
 
 function generateAgentRubric() {
   generateRubric(route.params.id)
+}
+
+function useActionLabel(actionType) {
+  if (actionType === 'human_intervention') {
+    return 'Human intervention'
+  }
+
+  if (actionType === 'script_training') {
+    return 'Script training'
+  }
+
+  return 'Workflow fix'
+}
+
+function useActionTone(actionType) {
+  if (actionType === 'human_intervention') {
+    return 'bg-rose-100 text-rose-700'
+  }
+
+  if (actionType === 'script_training') {
+    return 'bg-amber-100 text-amber-700'
+  }
+
+  return 'bg-sky-100 text-sky-700'
 }
 
 watch(() => route.params.id, reload, { immediate: true })
