@@ -64,6 +64,31 @@ function getScoreTone(score) {
   return 'fail'
 }
 
+// Lenient bands kept intentionally: >80 strong, 60-80 acceptable, <60 poor.
+function scoreBand(score) {
+  if (typeof score !== 'number' || Number.isNaN(score)) {
+    return 'none'
+  }
+
+  if (score > 80) {
+    return 'strong'
+  }
+
+  if (score > 60) {
+    return 'acceptable'
+  }
+
+  return 'poor'
+}
+
+function formatPercent(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return '0%'
+  }
+
+  return `${Math.round(value)}%`
+}
+
 function formatScore(score) {
   if (typeof score !== 'number' || Number.isNaN(score)) {
     return 'N/A'
@@ -83,9 +108,11 @@ function humanizeCategory(value) {
 export {
   formatDateTime,
   formatDuration,
+  formatPercent,
   formatScore,
   formatShortDate,
   formatTurnTime,
   getScoreTone,
   humanizeCategory,
+  scoreBand,
 }

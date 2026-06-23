@@ -1,66 +1,55 @@
-import { ref } from 'vue'
+import { computed } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { toast } from 'vue-sonner'
 
-import { getDashboardOverview, triggerFullSync, triggerSync } from '../api/client.js'
+import { getDashboardOverview, triggerFullSync, triggerSync } from '@/api/client.js'
+
+const OVERVIEW_KEY = ['dashboard-overview']
 
 export function useDashboard() {
-  const data = ref(null)
-  const error = ref('')
-  const loading = ref(false)
-  const syncError = ref('')
-  const syncLoading = ref(false)
-  const syncResult = ref(null)
+  const queryClient = useQueryClient()
 
-  async function load() {
-    loading.value = true
-    error.value = ''
+  const query = useQuery({
+    queryKey: OVERVIEW_KEY,
+    queryFn: getDashboardOverview,
+    select: (response) => response.data,
+  })
 
-    try {
-      const response = await getDashboardOverview()
-      data.value = response.data
-    } catch (loadError) {
-      error.value = loadError.message
-    } finally {
-      loading.value = false
-    }
+  function invalidate() {
+    return queryClient.invalidateQueries({ queryKey: OVERVIEW_KEY })
   }
 
-  async function runSync() {
-    syncLoading.value = true
-    syncError.value = ''
+  const syncMutation = useMutation({
+    mutationFn: triggerSync,
+    onSuccess: async (response) => {
+      await invalidate()
+      const agents = response.data?.agents?.totalSynced ?? 0
+      const calls = response.data?.calls?.ingestedCount ?? response.data?.calls?.totalFetched ?? 0
+      toast.success('Sync complete', { description: `${agents} agents and ${calls} calls refreshed.` })
+    },
+    onError: (error) => toast.error('Sync failed', { description: error.message }),
+  })
 
-    try {
-      syncResult.value = (await triggerSync()).data
-      await load()
-    } catch (requestError) {
-      syncError.value = requestError.message
-    } finally {
-      syncLoading.value = false
-    }
-  }
+  const fullSyncMutation = useMutation({
+    mutationFn: triggerFullSync,
+    onSuccess: async (response) => {
+      await invalidate()
+      const evaluated = response.data?.evaluationSummary?.evaluatedCount ?? 0
+      toast.success('Sync & analysis complete', { description: `${evaluated} calls evaluated.` })
+    },
+    onError: (error) => toast.error('Sync & analyze failed', { description: error.message }),
+  })
 
-  async function runFullSync() {
-    syncLoading.value = true
-    syncError.value = ''
-
-    try {
-      syncResult.value = (await triggerFullSync()).data
-      await load()
-    } catch (requestError) {
-      syncError.value = requestError.message
-    } finally {
-      syncLoading.value = false
-    }
-  }
+  const syncing = computed(() => syncMutation.isPending.value || fullSyncMutation.isPending.value)
 
   return {
-    data,
-    error,
-    load,
-    loading,
-    runFullSync,
-    runSync,
-    syncError,
-    syncLoading,
-    syncResult,
+    error: query.error,
+    isError: query.isError,
+    isLoading: query.isLoading,
+    overview: query.data,
+    refetch: query.refetch,
+    runFullSync: () => fullSyncMutation.mutate(),
+    runSync: () => syncMutation.mutate(),
+    syncing,
   }
 }

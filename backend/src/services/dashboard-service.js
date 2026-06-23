@@ -623,11 +623,13 @@ function getRubricCandidates(agents) {
 async function generateNeededRubrics(agents) {
   let generatedCount = 0
   const errors = []
+  const regeneratedAgentIds = []
 
   for (const agent of agents) {
     try {
       await generateRubric(agent.id)
       generatedCount += 1
+      regeneratedAgentIds.push(agent.id)
     } catch (error) {
       errors.push({
         agentId: agent.id,
@@ -636,16 +638,20 @@ async function generateNeededRubrics(agents) {
     }
   }
 
-  return { errors, generatedCount }
+  return { errors, generatedCount, regeneratedAgentIds }
 }
 
-async function evaluateUnevaluatedCalls(agents) {
+async function evaluateCallsForAgents(agents, options = {}) {
+  const { forceAgentIds = [] } = options
+  const forcedAgentIdSet = new Set(forceAgentIds)
   const summaries = []
 
   for (const agent of agents) {
     summaries.push({
       agentId: agent.id,
-      ...await evaluateAllCalls(agent.id),
+      ...await evaluateAllCalls(agent.id, {
+        force: forcedAgentIdSet.has(agent.id),
+      }),
     })
   }
 
@@ -670,7 +676,9 @@ async function syncAndEvaluateDashboard() {
     },
   })
   const rubricGeneration = await generateNeededRubrics(getRubricCandidates(agents))
-  const evaluationSummary = await evaluateUnevaluatedCalls(agents)
+  const evaluationSummary = await evaluateCallsForAgents(agents, {
+    forceAgentIds: rubricGeneration.regeneratedAgentIds,
+  })
 
   return {
     agentSync,

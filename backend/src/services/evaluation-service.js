@@ -464,15 +464,20 @@ async function evaluateCall(callLogId) {
   })
 }
 
-async function evaluateAllCalls(agentId) {
+async function evaluateAllCalls(agentId, options = {}) {
+  const { force = false } = options
   await loadAgent(agentId)
 
   const calls = await prisma.callLog.findMany({
     where: {
       agentId,
-      evaluation: {
-        is: null,
-      },
+      ...(force
+        ? {}
+        : {
+          evaluation: {
+            is: null,
+          },
+        }),
     },
   })
 

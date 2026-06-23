@@ -1,636 +1,486 @@
+<script setup>
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ArrowLeft, ChevronDown, Clock, Database, Gauge, PhoneCall, RefreshCw, Timer } from '@lucide/vue'
+
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import CategoryBadge from '@/components/common/CategoryBadge.vue'
+import DataTable from '@/components/common/DataTable.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import KpiCard from '@/components/common/KpiCard.vue'
+import ScoreBadge from '@/components/common/ScoreBadge.vue'
+import RecommendationCard from '@/components/dashboard/RecommendationCard.vue'
+import RubricItemCard from '@/components/dashboard/RubricItemCard.vue'
+import ScoreTrendChart from '@/components/dashboard/ScoreTrendChart.vue'
+import UseActionCard from '@/components/dashboard/UseActionCard.vue'
+import { useAgent } from '@/composables/useAgent.js'
+import { formatDateTime, formatDuration, formatPercent } from '@/utils/formatters.js'
+
+const route = useRoute()
+const router = useRouter()
+const agentId = computed(() => route.params.id)
+const { agent, isLoading, isError, error, regenerateRubric, rubricPending } = useAgent(agentId)
+
+const isEmbedded = computed(() => route.query.embedded === 'true' || window.__VOICE_AI_EMBED__?.embedded === true)
+const detail = computed(() => agent.value)
+const metrics = computed(() => detail.value?.metrics || {})
+const rubric = computed(() => detail.value?.agent?.rubric || null)
+const rubricItems = computed(() => (Array.isArray(rubric.value?.rubric) ? rubric.value.rubric : []))
+const primaryGoals = computed(() => (Array.isArray(rubric.value?.primaryGoals) ? rubric.value.primaryGoals : []))
+const goalSummary = computed(() => rubric.value?.agentGoalSummary || 'Rubric generation has not completed for this agent yet.')
+const isLongDescription = computed(() => goalSummary.value.length > 160)
+const descriptionExpanded = ref(false)
+watch(agentId, () => {
+  descriptionExpanded.value = false
+})
+const scoreOverTime = computed(() => metrics.value.scoreOverTime || [])
+const findingFrequency = computed(() => metrics.value.findingFrequency || [])
+const actionSuccessRates = computed(() => metrics.value.actionSuccessRates || [])
+const useActions = computed(() => detail.value?.useActions || [])
+const recommendations = computed(() => detail.value?.topRecommendations || [])
+
+const USE_ACTION_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'script_training', label: 'Script training' },
+  { value: 'human_intervention', label: 'Human intervention' },
+  { value: 'workflow_fix', label: 'Workflow fix' },
+]
+
+function useActionsByType(type) {
+  return type === 'all' ? useActions.value : useActions.value.filter((action) => action.actionType === type)
+}
+
+const findingColumns = [
+  { id: 'expander', header: '', enableSorting: false },
+  { accessorKey: 'finding', header: 'Finding' },
+  { accessorKey: 'category', header: 'Category', enableSorting: false },
+  { accessorKey: 'count', header: 'Count' },
+]
+
+const callColumns = [
+  { accessorKey: 'calledAt', header: 'Date' },
+  { accessorKey: 'duration', header: 'Duration' },
+  { accessorKey: 'overallScore', header: 'Score' },
+]
+
+function barTone(rate) {
+  if (rate > 80) {
+    return 'bg-emerald-500'
+  }
+  if (rate > 60) {
+    return 'bg-amber-500'
+  }
+  return 'bg-rose-500'
+}
+
+function sampleEvidenceQuotes(finding) {
+  return Array.isArray(finding.sampleEvidence?.quotes) ? finding.sampleEvidence.quotes : []
+}
+
+function getSharedQuery() {
+  return isEmbedded.value ? { ...route.query, embedded: 'true' } : route.query
+}
+
+function openCall(call) {
+  router.push({ path: `/calls/${call.id}`, query: getSharedQuery() })
+}
+</script>
+
 <template>
   <section class="space-y-6">
     <RouterLink
-      class="inline-flex items-center text-sm font-medium text-primary hover:text-primary-hover"
+      class="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
       :to="{ path: '/', hash: '#agents', query: getSharedQuery() }"
     >
-      ← All Agents
+      <ArrowLeft class="size-4" />
+      All agents
     </RouterLink>
 
     <div
-      v-if="loading"
+      v-if="isLoading"
       class="space-y-4"
     >
-      <div class="rounded-lg border border-border bg-white p-6 shadow-card">
-        <div class="h-6 w-48 animate-pulse rounded bg-slate-200" />
-        <div class="mt-3 h-4 w-32 animate-pulse rounded bg-slate-200" />
-        <div class="mt-5 h-16 animate-pulse rounded bg-slate-100" />
+      <Skeleton class="h-28 rounded-xl" />
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <Skeleton
+          v-for="index in 5"
+          :key="`kpi-${index}`"
+          class="h-24 rounded-xl"
+        />
       </div>
-      <div class="rounded-lg border border-border bg-white p-6 shadow-card">
-        <div class="h-4 w-32 animate-pulse rounded bg-slate-200" />
-        <div class="mt-4 h-40 animate-pulse rounded bg-slate-100" />
-      </div>
+      <Skeleton class="h-72 rounded-xl" />
     </div>
 
     <div
-      v-else-if="error"
-      class="rounded-lg border border-red-200 bg-red-50 p-5"
+      v-else-if="isError"
+      class="rounded-lg border border-rose-200 bg-rose-50 p-5"
     >
-      <p class="text-sm font-medium text-red-700">
-        {{ error }}
+      <p class="text-sm font-medium text-rose-700">
+        {{ error?.message || 'Failed to load agent.' }}
       </p>
-      <button
-        class="mt-4 inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-        type="button"
-        @click="reload"
-      >
-        Retry
-      </button>
     </div>
 
     <EmptyState
-      v-else-if="!agentDetail"
+      v-else-if="!detail"
       description="This agent record is not available yet."
       title="Agent not found"
     />
 
     <template v-else>
-      <header class="rounded-lg border border-border bg-white p-6 shadow-card">
-        <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+      <Card>
+        <CardContent class="flex flex-col gap-5 p-6 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0">
-            <p class="text-sm font-medium text-content-secondary">
-              {{ agentDetail.agent.businessName || 'Unknown business' }}
+            <p class="text-sm font-medium text-muted-foreground">
+              {{ detail.agent.businessName || 'Unknown business' }}
             </p>
-            <h1 class="mt-2 text-2xl font-semibold tracking-tight text-content-primary">
-              {{ agentDetail.agent.agentName }}
+            <h1 class="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+              {{ detail.agent.agentName }}
             </h1>
-            <p class="mt-3 max-w-2xl text-sm leading-6 text-content-secondary">
-              {{ rubricSummary }}
-            </p>
+            <div class="mt-3 max-w-2xl">
+              <p :class="['text-sm leading-relaxed text-muted-foreground', !descriptionExpanded && isLongDescription && 'line-clamp-2']">
+                {{ goalSummary }}
+              </p>
+              <button
+                v-if="isLongDescription"
+                type="button"
+                class="mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                @click="descriptionExpanded = !descriptionExpanded"
+              >
+                {{ descriptionExpanded ? 'Show less' : 'Read more' }}
+              </button>
+            </div>
           </div>
-
-          <div class="flex flex-col items-start gap-3 lg:items-end">
+          <div class="flex shrink-0 items-center gap-4 lg:flex-col lg:items-end">
             <ScoreBadge
-              :score="agentDetail.metrics.averageScore"
+              :score="metrics.averageScore"
               size="lg"
             />
-            <button
-              class="inline-flex items-center rounded-md border border-primary bg-white px-4 py-2 text-sm font-medium text-primary hover:bg-primary-light"
-              type="button"
-              :disabled="rubricLoading"
-              @click="generateAgentRubric"
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="rubricPending"
+              @click="regenerateRubric"
             >
-              {{ rubricLoading ? 'Generating...' : 'Refresh Rubric' }}
-            </button>
+              <RefreshCw :class="['size-4', rubricPending && 'animate-spin']" />
+              {{ rubricPending ? 'Generating…' : 'Refresh rubric' }}
+            </Button>
           </div>
-        </div>
-      </header>
+        </CardContent>
+      </Card>
 
-      <div
-        v-if="rubricError"
-        class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-      >
-        {{ rubricError }}
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <KpiCard
+          :icon="Gauge"
+          :value="`${Math.round(metrics.averageScore || 0)}`"
+          label="Avg score"
+        />
+        <KpiCard
+          :icon="PhoneCall"
+          :value="String(metrics.totalCalls || 0)"
+          label="Total calls"
+        />
+        <KpiCard
+          :icon="Timer"
+          :value="`${(metrics.averageResponseLatency || 0).toFixed(1)}s`"
+          label="Avg latency"
+        />
+        <KpiCard
+          :icon="Database"
+          :value="formatPercent(metrics.extractionCompleteness)"
+          label="Extraction"
+        />
+        <KpiCard
+          :icon="Clock"
+          :value="formatDuration(metrics.averageDuration)"
+          label="Avg duration"
+        />
       </div>
 
-      <section class="rounded-lg border border-border bg-white shadow-card">
-        <div class="border-b border-border px-6">
-          <div class="flex items-center gap-6">
-            <button
-              v-for="tab in tabs"
-              :key="tab"
-              :class="[
-                activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-content-secondary hover:text-content-primary',
-                'border-b-2 py-4 text-sm font-medium capitalize',
-              ]"
-              type="button"
-              @click="activeTab = tab"
+      <Card>
+        <CardHeader>
+          <CardTitle class="text-base">
+            Score over time
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScoreTrendChart
+            v-if="scoreOverTime.length >= 2"
+            :points="scoreOverTime"
+          />
+          <EmptyState
+            v-else
+            description="This agent needs at least two evaluated calls before a trend can be plotted."
+            title="Not enough data for a trend"
+          />
+        </CardContent>
+      </Card>
+
+      <Tabs default-value="findings">
+        <TabsList>
+          <TabsTrigger value="findings">
+            Findings
+          </TabsTrigger>
+          <TabsTrigger value="fix">
+            What to fix
+          </TabsTrigger>
+          <TabsTrigger value="rubric">
+            Rubric
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent
+          value="findings"
+          class="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start"
+        >
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-foreground">
+              Most frequent failed findings
+            </h3>
+            <DataTable
+              v-if="findingFrequency.length"
+              :columns="findingColumns"
+              :data="findingFrequency"
+              :page-size="8"
+              empty-text="No recurring findings yet."
             >
-              {{ tab }}
-            </button>
+              <template #cell-expander="{ row }">
+                <button
+                  type="button"
+                  :aria-label="row.getIsExpanded() ? 'Collapse evidence' : 'Expand evidence'"
+                  :aria-expanded="row.getIsExpanded()"
+                  class="rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  @click="row.toggleExpanded()"
+                >
+                  <ChevronDown :class="cn('size-4 transition-transform', row.getIsExpanded() && 'rotate-180')" />
+                </button>
+              </template>
+              <template #cell-finding="{ item }">
+                <span class="font-medium text-foreground">{{ item.finding }}</span>
+              </template>
+              <template #cell-category="{ item }">
+                <CategoryBadge :category="item.category" />
+              </template>
+              <template #cell-count="{ item }">
+                <span class="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-semibold tabular-nums text-foreground">{{ item.count }}×</span>
+              </template>
+              <template #expanded="{ item }">
+                <div class="space-y-2 px-4 py-3">
+                  <p
+                    v-if="item.sampleEvidence?.reasoning"
+                    class="text-sm text-muted-foreground"
+                  >
+                    {{ item.sampleEvidence.reasoning }}
+                  </p>
+                  <p
+                    v-for="(quote, index) in sampleEvidenceQuotes(item)"
+                    :key="index"
+                    class="rounded-md bg-card px-2.5 py-1.5 text-xs italic text-foreground"
+                  >
+                    “{{ quote }}”
+                  </p>
+                  <p
+                    v-if="item.sampleEvidence?.turnIndices?.length"
+                    class="text-[11px] text-muted-foreground"
+                  >
+                    Referenced turns: {{ item.sampleEvidence.turnIndices.join(', ') }}
+                  </p>
+                </div>
+              </template>
+            </DataTable>
+            <EmptyState
+              v-else
+              description="Finding frequencies appear once failed checks and semantic findings are stored."
+              title="No findings yet"
+            />
           </div>
-        </div>
 
-        <div class="p-6">
-          <div
-            v-if="activeTab === 'metrics'"
-            class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]"
-          >
-            <article class="rounded-lg border border-border bg-surface-tertiary p-5">
-              <div class="flex items-center justify-between">
-                <div>
-                  <h2 class="text-base font-semibold text-content-primary">
-                    Score Trend
-                  </h2>
-                  <p class="text-sm text-content-secondary">
-                    Average score across evaluated calls over time.
-                  </p>
-                </div>
-                <span class="text-sm font-medium text-content-secondary">
-                  {{ agentDetail.metrics.totalCalls }} calls
-                </span>
-              </div>
-
-              <div
-                v-if="scoreTrendPoints"
-                class="mt-5 rounded-lg border border-border bg-white p-4"
-              >
-                <svg
-                  class="h-40 w-full"
-                  viewBox="0 0 320 160"
-                  preserveAspectRatio="none"
-                >
-                  <line
-                    v-for="marker in [20, 50, 80, 110, 140]"
-                    :key="marker"
-                    x1="0"
-                    :y1="marker"
-                    x2="320"
-                    :y2="marker"
-                    stroke="#E2E8F0"
-                    stroke-dasharray="4 4"
-                  />
-                  <polyline
-                    fill="none"
-                    points="10,140 310,140"
-                    stroke="#CBD5E1"
-                    stroke-linecap="round"
-                    stroke-width="2"
-                  />
-                  <polyline
-                    fill="none"
-                    :points="scoreTrendPoints"
-                    stroke="#4F46E5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="3"
-                  />
-                </svg>
-                <div class="mt-3 flex flex-wrap justify-between gap-2 text-xs text-content-tertiary">
-                  <span
-                    v-for="point in scoreTrend"
-                    :key="`${point.date}-${point.score}`"
-                  >
-                    {{ formatShortDate(point.date) }} · {{ Math.round(point.score) }}
-                  </span>
-                </div>
-              </div>
-
-              <EmptyState
-                v-else
-                description="This agent needs evaluated calls before trend data can be plotted."
-                title="No score trend yet"
-              />
-            </article>
-
-            <div class="space-y-5">
-              <article class="rounded-lg border border-border bg-surface-tertiary p-5">
-                <h2 class="text-base font-semibold text-content-primary">
-                  Action Success Rates
-                </h2>
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-foreground">
+              Action success rates
+            </h3>
+            <Card v-if="actionSuccessRates.length">
+              <CardContent class="space-y-4 p-5">
                 <div
-                  v-if="agentDetail.metrics.actionSuccessRates.length"
-                  class="mt-4 space-y-4"
+                  v-for="action in actionSuccessRates"
+                  :key="action.actionName"
                 >
-                  <div
-                    v-for="action in agentDetail.metrics.actionSuccessRates"
-                    :key="action.actionName"
-                  >
-                    <div class="mb-1 flex items-center justify-between gap-3">
-                      <span class="text-sm font-medium text-content-primary">{{ action.actionName }}</span>
-                      <span class="text-xs text-content-secondary">
-                        {{ action.succeeded }}/{{ action.attempted }} succeeded
-                      </span>
-                    </div>
-                    <div class="h-2 rounded-full bg-slate-200">
-                      <div
-                        class="h-2 rounded-full bg-primary"
-                        :style="{ width: `${action.rate}%` }"
-                      />
-                    </div>
+                  <div class="mb-1 flex items-center justify-between gap-3 text-sm">
+                    <span class="truncate font-medium text-foreground">{{ action.actionName }}</span>
+                    <span class="shrink-0 text-xs text-muted-foreground">{{ action.succeeded }}/{{ action.attempted }} · {{ Math.round(action.rate) }}%</span>
                   </div>
-                </div>
-                <p
-                  v-else
-                  class="mt-4 text-sm text-content-secondary"
-                >
-                  No action execution data is available for this agent yet.
-                </p>
-              </article>
-
-              <article class="grid gap-4 md:grid-cols-2">
-                <div class="rounded-lg border border-border bg-surface-tertiary p-5">
-                  <p class="text-sm font-medium text-content-secondary">
-                    Extraction Completeness
-                  </p>
-                  <p class="mt-2 text-3xl font-semibold text-content-primary">
-                    {{ extractionLabel }}
-                  </p>
-                  <div class="mt-4 h-2 rounded-full bg-slate-200">
+                  <div class="h-2 overflow-hidden rounded-full bg-muted">
                     <div
-                      class="h-2 rounded-full bg-status-pass"
-                      :style="{ width: extractionBarWidth }"
+                      :class="cn('h-full rounded-full', barTone(action.rate))"
+                      :style="{ width: `${action.rate}%` }"
                     />
                   </div>
                 </div>
-
-                <div class="rounded-lg border border-border bg-surface-tertiary p-5">
-                  <p class="text-sm font-medium text-content-secondary">
-                    Avg Response Latency
-                  </p>
-                  <p class="mt-2 text-3xl font-semibold text-content-primary">
-                    {{ responseLatencyLabel }}
-                  </p>
-                  <p class="mt-3 text-sm text-content-secondary">
-                    Average seconds between a user turn finishing and the agent replying.
-                  </p>
-                </div>
-              </article>
-            </div>
-          </div>
-
-          <div
-            v-else-if="activeTab === 'findings'"
-            class="space-y-4"
-          >
-            <div
-              v-if="agentDetail.metrics.findingFrequency.length"
-              class="space-y-4"
-            >
-              <article
-                v-for="finding in agentDetail.metrics.findingFrequency"
-                :key="`${finding.category}-${finding.finding}`"
-                class="rounded-lg border border-border bg-surface-tertiary p-5"
-              >
-                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <div class="flex flex-wrap items-center gap-2">
-                      <h2 class="text-base font-semibold text-content-primary">
-                        {{ finding.finding }}
-                      </h2>
-                      <CategoryBadge :category="finding.category" />
-                    </div>
-                    <p class="mt-3 text-sm text-content-secondary">
-                      {{ sampleEvidenceText(finding) }}
-                    </p>
-                  </div>
-                  <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-sm font-medium text-content-secondary">
-                    {{ finding.count }}x
-                  </span>
-                </div>
-              </article>
-            </div>
+              </CardContent>
+            </Card>
             <EmptyState
               v-else
-              description="Finding frequencies will appear once failed checks and semantic findings are stored."
-              title="No findings frequency data yet"
+              description="No action-execution data is available for this agent yet."
+              title="No action data"
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent
+          value="fix"
+          class="space-y-8"
+        >
+          <div class="space-y-3">
+            <div>
+              <h3 class="text-sm font-semibold text-foreground">
+                Recommended actions
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                Prioritized by severity, then how many calls each issue affects.
+              </p>
+            </div>
+            <Tabs
+              v-if="useActions.length"
+              default-value="all"
+            >
+              <TabsList>
+                <TabsTrigger
+                  v-for="filter in USE_ACTION_FILTERS"
+                  :key="filter.value"
+                  :value="filter.value"
+                >
+                  {{ filter.label }}
+                  <span class="ml-1 text-xs text-muted-foreground">{{ useActionsByType(filter.value).length }}</span>
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent
+                v-for="filter in USE_ACTION_FILTERS"
+                :key="filter.value"
+                :value="filter.value"
+                class="grid gap-3 md:grid-cols-2"
+              >
+                <UseActionCard
+                  v-for="(action, index) in useActionsByType(filter.value)"
+                  :key="`${action.actionType}-${action.finding}-${index}`"
+                  :action="action"
+                />
+                <p
+                  v-if="!useActionsByType(filter.value).length"
+                  class="text-sm text-muted-foreground"
+                >
+                  No items in this category.
+                </p>
+              </TabsContent>
+            </Tabs>
+            <EmptyState
+              v-else
+              description="Use actions populate once failed findings are aggregated across this agent's calls."
+              title="No recommended actions yet"
             />
           </div>
 
-          <div
-            v-else-if="activeTab === 'recommendations'"
-            class="space-y-6"
-          >
-            <section>
-              <div class="mb-3 flex items-center justify-between">
-                <h2 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                  Use Actions
-                </h2>
-                <span class="text-xs text-content-secondary">
-                  {{ agentUseActions.length }} items
-                </span>
-              </div>
-              <div
-                v-if="agentUseActions.length"
-                class="grid gap-4"
-              >
-                <article
-                  v-for="action in agentUseActions"
-                  :key="`${action.actionType}-${action.finding}`"
-                  class="rounded-lg border border-border bg-surface-tertiary p-5"
-                >
-                  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <span
-                          :class="useActionTone(action.actionType)"
-                          class="rounded-full px-2.5 py-1 text-xs font-semibold"
-                        >
-                          {{ useActionLabel(action.actionType) }}
-                        </span>
-                        <span
-                          v-if="action.severity"
-                          class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-content-secondary"
-                        >
-                          {{ humanizeCategory(action.severity) }}
-                        </span>
-                      </div>
-                      <h3 class="mt-3 text-base font-semibold text-content-primary">
-                        {{ action.finding }}
-                      </h3>
-                      <p class="mt-2 text-sm leading-6 text-content-secondary">
-                        {{ action.recommendation }}
-                      </p>
-                      <p
-                        v-if="action.quotes?.length"
-                        class="mt-3 text-sm text-content-tertiary"
-                      >
-                        {{ action.quotes.join(' | ') }}
-                      </p>
-                    </div>
-                    <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-sm font-medium text-content-secondary">
-                      {{ action.affectedCalls }} calls
-                    </span>
-                  </div>
-                </article>
-              </div>
-              <EmptyState
-                v-else
-                description="Use actions will populate once failed findings are aggregated across this agent's call history."
-                title="No use actions available yet"
-              />
-            </section>
-
-            <section class="space-y-4">
-              <div class="mb-3 flex items-center justify-between">
-                <h2 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                  Aggregated Recommendations
-                </h2>
-                <span class="text-xs text-content-secondary">
-                  {{ sortedRecommendations.length }} items
-                </span>
-              </div>
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-foreground">
+              Top recommendations
+            </h3>
             <div
-              v-if="sortedRecommendations.length"
-              class="grid gap-4"
+              v-if="recommendations.length"
+              class="grid gap-3"
             >
-              <article
-                v-for="recommendation in sortedRecommendations"
-                :key="recommendation.title"
-                class="rounded-lg border border-border bg-surface-tertiary p-5"
-              >
-                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="rounded-full bg-primary-light px-2.5 py-1 text-xs font-semibold text-primary">
-                        Priority {{ recommendation.priority || 'N/A' }}
-                      </span>
-                      <span
-                        v-if="recommendation.impactArea"
-                        class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-content-secondary"
-                      >
-                        {{ recommendation.impactArea }}
-                      </span>
-                    </div>
-                    <h2 class="mt-3 text-base font-semibold text-content-primary">
-                      {{ recommendation.title }}
-                    </h2>
-                    <p class="mt-2 text-sm leading-6 text-content-secondary">
-                      {{ recommendation.description || 'No additional recommendation detail available.' }}
-                    </p>
-                  </div>
-                  <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-sm font-medium text-content-secondary">
-                    {{ recommendation.frequency }}x
-                  </span>
-                </div>
+              <RecommendationCard
+                v-for="(recommendation, index) in recommendations"
+                :key="recommendation.title || index"
+                :rank="index + 1"
+                :recommendation="recommendation"
+              />
+            </div>
+            <EmptyState
+              v-else
+              description="Recommendations populate once this agent has semantic evaluations."
+              title="No recommendations yet"
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent
+          value="rubric"
+          class="space-y-4"
+        >
+          <Card>
+            <CardContent class="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
+              <div class="max-w-3xl">
+                <h3 class="text-sm font-semibold text-foreground">
+                  Rubric goal
+                </h3>
+                <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {{ rubric?.agentGoalSummary || 'Rubric generation has not completed for this agent yet.' }}
+                </p>
                 <div
-                  v-if="recommendation.relatedRubricItems?.length"
-                  class="mt-4 flex flex-wrap gap-2"
+                  v-if="primaryGoals.length"
+                  class="mt-3 flex flex-wrap gap-1.5"
                 >
                   <span
-                    v-for="relatedRubricItem in recommendation.relatedRubricItems"
-                    :key="relatedRubricItem"
-                    class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-content-secondary"
+                    v-for="goal in primaryGoals"
+                    :key="goal"
+                    class="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
                   >
-                    {{ relatedRubricItem }}
+                    {{ goal }}
                   </span>
                 </div>
-              </article>
-            </div>
-            <EmptyState
-              v-else
-              description="Recommendations will populate once this agent has semantic evaluations."
-              title="No recommendations available yet"
-            />
-            </section>
-          </div>
-
+              </div>
+              <span class="shrink-0 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+                <span class="font-semibold text-foreground">{{ rubricItems.length }}</span> items
+              </span>
+            </CardContent>
+          </Card>
           <div
-            v-else
-            class="space-y-6"
+            v-if="rubricItems.length"
+            class="grid gap-3"
           >
-            <article class="rounded-lg border border-border bg-surface-tertiary p-5">
-              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div class="max-w-3xl">
-                  <h2 class="text-base font-semibold text-content-primary">
-                    Rubric Goal Summary
-                  </h2>
-                  <p class="mt-3 text-sm leading-6 text-content-secondary">
-                    {{ rubric?.agentGoalSummary || 'Rubric generation has not completed for this agent yet.' }}
-                  </p>
-                </div>
-                <div class="rounded-lg bg-white px-4 py-3 text-sm text-content-secondary">
-                  <span class="font-semibold text-content-primary">{{ rubricItems.length }}</span> rubric items
-                </div>
-              </div>
-
-              <div
-                v-if="rubricPrimaryGoals.length"
-                class="mt-5 flex flex-wrap gap-2"
-              >
-                <span
-                  v-for="goal in rubricPrimaryGoals"
-                  :key="goal"
-                  class="rounded-full bg-white px-3 py-1.5 text-sm font-medium text-content-secondary"
-                >
-                  {{ goal }}
-                </span>
-              </div>
-            </article>
-
-            <div
-              v-if="rubricItems.length"
-              class="grid gap-4"
-            >
-              <RubricItemCard
-                v-for="item in rubricItems"
-                :key="item.id"
-                :item="item"
-              />
-            </div>
-            <EmptyState
-              v-else
-              description="Generate or refresh the rubric to render the agent evaluation contract here."
-              title="No rubric items available yet"
+            <RubricItemCard
+              v-for="item in rubricItems"
+              :key="item.id"
+              :item="item"
             />
           </div>
-        </div>
-      </section>
+          <EmptyState
+            v-else
+            description="Refresh the rubric to render the agent evaluation contract here."
+            title="No rubric items yet"
+          />
+        </TabsContent>
+      </Tabs>
 
-      <section class="overflow-hidden rounded-lg border border-border bg-white shadow-card">
-        <div class="border-b border-border px-6 py-4">
-          <h2 class="text-base font-semibold text-content-primary">
-            Calls
-          </h2>
-        </div>
-        <table class="min-w-full divide-y divide-border">
-          <thead class="bg-surface-tertiary">
-            <tr>
-              <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-content-tertiary">
-                Call Date
-              </th>
-              <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-content-tertiary">
-                Duration
-              </th>
-              <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-content-tertiary">
-                Score
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-border">
-            <tr
-              v-for="call in agentDetail.calls"
-              :key="call.id"
-              class="cursor-pointer hover:bg-surface-tertiary"
-              @click="openCall(call.id)"
-            >
-              <td class="px-4 py-4 text-sm text-content-secondary">
-                {{ formatDateTime(call.calledAt) }}
-              </td>
-              <td class="px-4 py-4 text-sm text-content-secondary">
-                {{ formatDuration(call.duration) }}
-              </td>
-              <td class="px-4 py-4">
-                <ScoreBadge
-                  :score="call.overallScore"
-                  size="sm"
-                />
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <section class="space-y-3">
+        <h2 class="text-base font-semibold text-foreground">
+          Calls
+        </h2>
+        <DataTable
+          :columns="callColumns"
+          :data="detail.calls"
+          :initial-sorting="[{ id: 'calledAt', desc: true }]"
+          :page-size="10"
+          row-clickable
+          empty-text="No calls recorded for this agent yet."
+          @row-click="openCall"
+        >
+          <template #cell-calledAt="{ item }">
+            <span class="text-sm text-muted-foreground">{{ formatDateTime(item.calledAt) }}</span>
+          </template>
+          <template #cell-duration="{ item }">
+            <span class="text-sm text-muted-foreground">{{ formatDuration(item.duration) }}</span>
+          </template>
+          <template #cell-overallScore="{ item }">
+            <ScoreBadge
+              :score="item.overallScore"
+              size="sm"
+            />
+          </template>
+        </DataTable>
       </section>
     </template>
   </section>
 </template>
-
-<script setup>
-import { computed, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
-
-import CategoryBadge from '../components/dashboard/CategoryBadge.vue'
-import EmptyState from '../components/dashboard/EmptyState.vue'
-import RubricItemCard from '../components/dashboard/RubricItemCard.vue'
-import ScoreBadge from '../components/dashboard/ScoreBadge.vue'
-import { useAgent } from '../composables/useAgent.js'
-import { formatDateTime, formatDuration, formatShortDate, humanizeCategory } from '../utils/formatters.js'
-
-const route = useRoute()
-const router = useRouter()
-const { data, error, generateRubric, load, loading, rubricError, rubricLoading } = useAgent()
-const activeTab = ref('metrics')
-const tabs = ['metrics', 'findings', 'recommendations', 'rubric']
-const isEmbedded = computed(() => route.query.embedded === 'true' || window.__VOICE_AI_EMBED__?.embedded === true)
-
-const agentDetail = computed(() => data.value)
-const scoreTrend = computed(() => agentDetail.value?.metrics?.scoreOverTime || [])
-const scoreTrendPoints = computed(() => {
-  const points = scoreTrend.value
-
-  if (points.length < 2) {
-    return ''
-  }
-
-  return points
-    .map((point, index) => {
-      const x = 10 + ((300 / (points.length - 1)) * index)
-      const y = 140 - ((Math.max(0, Math.min(100, point.score)) / 100) * 120)
-      return `${x},${y}`
-    })
-    .join(' ')
-})
-const extractionLabel = computed(() => `${Math.round(agentDetail.value?.metrics?.extractionCompleteness || 0)}%`)
-const extractionBarWidth = computed(() => `${Math.max(0, Math.min(100, agentDetail.value?.metrics?.extractionCompleteness || 0))}%`)
-const responseLatencyLabel = computed(() => `${(agentDetail.value?.metrics?.averageResponseLatency || 0).toFixed(1)}s`)
-const rubricSummary = computed(() => {
-  const rubric = agentDetail.value?.agent?.rubric
-
-  if (!rubric?.agentGoalSummary) {
-    return 'Rubric generation has not completed for this agent yet.'
-  }
-
-  return `${rubric.agentGoalSummary} Primary goals: ${(rubric.primaryGoals || []).join(', ')}.`
-})
-const rubric = computed(() => agentDetail.value?.agent?.rubric || null)
-const rubricItems = computed(() => Array.isArray(rubric.value?.rubric) ? rubric.value.rubric : [])
-const rubricPrimaryGoals = computed(() => Array.isArray(rubric.value?.primaryGoals) ? rubric.value.primaryGoals : [])
-const agentUseActions = computed(() => agentDetail.value?.useActions || [])
-const sortedRecommendations = computed(() => {
-  const recommendations = agentDetail.value?.topRecommendations || []
-  return [...recommendations].sort((left, right) => {
-    const leftPriority = left.priority ?? Number.POSITIVE_INFINITY
-    const rightPriority = right.priority ?? Number.POSITIVE_INFINITY
-
-    if (leftPriority !== rightPriority) {
-      return leftPriority - rightPriority
-    }
-
-    return (right.frequency || 0) - (left.frequency || 0)
-  })
-})
-
-function sampleEvidenceText(finding) {
-  if (finding.sampleEvidence?.quotes?.length) {
-    return finding.sampleEvidence.quotes.join(' | ')
-  }
-
-  if (finding.sampleEvidence?.reasoning) {
-    return finding.sampleEvidence.reasoning
-  }
-
-  if (finding.sampleEvidence?.turnIndices?.length) {
-    return `Referenced turns: ${finding.sampleEvidence.turnIndices.join(', ')}`
-  }
-
-  return 'No sample evidence available.'
-}
-
-function getSharedQuery() {
-  return isEmbedded.value
-    ? { ...route.query, embedded: 'true' }
-    : route.query
-}
-
-function openCall(callId) {
-  router.push({
-    path: `/calls/${callId}`,
-    query: getSharedQuery(),
-  })
-}
-
-function reload() {
-  load(route.params.id)
-}
-
-function generateAgentRubric() {
-  generateRubric(route.params.id)
-}
-
-function useActionLabel(actionType) {
-  if (actionType === 'human_intervention') {
-    return 'Human intervention'
-  }
-
-  if (actionType === 'script_training') {
-    return 'Script training'
-  }
-
-  return 'Workflow fix'
-}
-
-function useActionTone(actionType) {
-  if (actionType === 'human_intervention') {
-    return 'bg-rose-100 text-rose-700'
-  }
-
-  if (actionType === 'script_training') {
-    return 'bg-amber-100 text-amber-700'
-  }
-
-  return 'bg-sky-100 text-sky-700'
-}
-
-watch(() => route.params.id, reload, { immediate: true })
-</script>

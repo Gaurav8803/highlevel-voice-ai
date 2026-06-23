@@ -1,51 +1,34 @@
-import { ref } from 'vue'
+import { toValue } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { toast } from 'vue-sonner'
 
-import { apiRequest, getAgentDetail } from '../api/client.js'
+import { apiRequest, getAgentDetail } from '@/api/client.js'
 
-export function useAgent() {
-  const data = ref(null)
-  const error = ref('')
-  const loading = ref(false)
-  const rubricLoading = ref(false)
-  const rubricError = ref('')
+export function useAgent(agentId) {
+  const queryClient = useQueryClient()
 
-  async function load(agentId) {
-    loading.value = true
-    error.value = ''
+  const query = useQuery({
+    queryKey: ['agent', agentId],
+    queryFn: () => getAgentDetail(toValue(agentId)),
+    select: (response) => response.data,
+    enabled: () => Boolean(toValue(agentId)),
+  })
 
-    try {
-      const response = await getAgentDetail(agentId)
-      data.value = response.data
-    } catch (loadError) {
-      error.value = loadError.message
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function generateRubric(agentId) {
-    rubricLoading.value = true
-    rubricError.value = ''
-
-    try {
-      await apiRequest(`/agents/${agentId}/rubric/regenerate`, {
-        method: 'POST',
-      })
-      await load(agentId)
-    } catch (requestError) {
-      rubricError.value = requestError.message
-    } finally {
-      rubricLoading.value = false
-    }
-  }
+  const rubricMutation = useMutation({
+    mutationFn: () => apiRequest(`/agents/${toValue(agentId)}/rubric/regenerate`, { method: 'POST' }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['agent', toValue(agentId)] })
+      toast.success('Rubric refreshed', { description: 'Re-generated the evaluation rubric for this agent.' })
+    },
+    onError: (error) => toast.error('Rubric refresh failed', { description: error.message }),
+  })
 
   return {
-    data,
-    error,
-    generateRubric,
-    load,
-    loading,
-    rubricError,
-    rubricLoading,
+    agent: query.data,
+    error: query.error,
+    isError: query.isError,
+    isLoading: query.isLoading,
+    regenerateRubric: () => rubricMutation.mutate(),
+    rubricPending: rubricMutation.isPending,
   }
 }

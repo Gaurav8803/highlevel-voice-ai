@@ -1,572 +1,54 @@
-<template>
-  <section class="space-y-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <RouterLink
-        class="inline-flex items-center text-sm font-medium text-primary hover:text-primary-hover"
-        :to="{ path: '/', hash: '#calls', query: getSharedQuery() }"
-      >
-        ← Back to Call Logs
-      </RouterLink>
-
-      <button
-        class="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-        type="button"
-        :disabled="evaluationLoading"
-        @click="runEvaluation"
-      >
-        {{ evaluationLoading ? 'Evaluating...' : evaluationButtonLabel }}
-      </button>
-    </div>
-
-    <div
-      v-if="evaluationError"
-      class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-    >
-      {{ evaluationError }}
-    </div>
-
-    <div
-      v-if="loading"
-      class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]"
-    >
-      <div class="rounded-lg border border-border bg-white p-6 shadow-card">
-        <div class="h-6 w-40 animate-pulse rounded bg-slate-200" />
-        <div class="mt-4 space-y-3">
-          <div
-            v-for="index in 4"
-            :key="`transcript-skeleton-${index}`"
-            class="h-20 animate-pulse rounded bg-slate-100"
-          />
-        </div>
-      </div>
-      <div class="rounded-lg border border-border bg-white p-6 shadow-card">
-        <div class="h-6 w-36 animate-pulse rounded bg-slate-200" />
-        <div class="mt-4 space-y-3">
-          <div
-            v-for="index in 5"
-            :key="`finding-skeleton-${index}`"
-            class="h-16 animate-pulse rounded bg-slate-100"
-          />
-        </div>
-      </div>
-    </div>
-
-    <div
-      v-else-if="error"
-      class="rounded-lg border border-red-200 bg-red-50 p-5"
-    >
-      <p class="text-sm font-medium text-red-700">
-        {{ error }}
-      </p>
-      <button
-        class="mt-4 inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-        type="button"
-        @click="reload"
-      >
-        Retry
-      </button>
-    </div>
-
-    <EmptyState
-      v-else-if="!callDetail"
-      description="This call record is not available yet."
-      title="Call not found"
-    />
-
-    <template v-else>
-      <header class="rounded-lg border border-border bg-white p-6 shadow-card">
-        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div class="min-w-0">
-            <p class="text-sm font-medium text-content-secondary">
-              {{ callDetail.agent.businessName || 'Unknown business' }}
-            </p>
-            <h1 class="mt-2 text-2xl font-semibold tracking-tight text-content-primary">
-              {{ callDetail.agent.agentName || 'Voice AI call' }}
-            </h1>
-            <div class="mt-3 flex flex-wrap gap-3 text-sm text-content-secondary">
-              <span>{{ formatDateTime(callDetail.call.calledAt) }}</span>
-              <span>{{ formatDuration(callDetail.call.duration) }}</span>
-              <span>{{ transcriptCountLabel }}</span>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-3">
-            <ScoreBadge
-              :score="callDetail.evaluation?.overallScore"
-              size="lg"
-            />
-          </div>
-        </div>
-
-        <div
-          v-if="callDetail.agent.rubricSummary"
-          class="mt-5 rounded-lg bg-surface-tertiary p-4 text-sm text-content-secondary"
-        >
-          <p class="font-medium text-content-primary">
-            {{ callDetail.agent.rubricSummary.agentGoalSummary }}
-          </p>
-          <p class="mt-2">
-            Goals: {{ callDetail.agent.rubricSummary.primaryGoals.join(', ') || 'No goals listed.' }}
-          </p>
-          <p class="mt-2">
-            Total rubric items: {{ callDetail.agent.rubricSummary.totalRubricItems || 0 }}
-          </p>
-        </div>
-
-        <div
-          v-if="callDetail.evaluation?.callPath"
-          class="mt-4 rounded-lg border border-border bg-white p-4 text-sm text-content-secondary"
-        >
-          <p class="text-xs font-semibold uppercase tracking-wide text-content-tertiary">
-            Call Path
-          </p>
-          <p class="mt-2 leading-6 text-content-primary">
-            {{ callDetail.evaluation.callPath }}
-          </p>
-        </div>
-      </header>
-
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <section class="rounded-lg border border-border bg-white p-6 shadow-card">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-lg font-semibold text-content-primary">
-                Transcript Viewer
-              </h2>
-              <p class="text-sm text-content-secondary">
-                Click any finding to jump to its referenced turns.
-              </p>
-            </div>
-          </div>
-
-          <div
-            v-if="turns.length"
-            class="mt-5 max-h-[780px] space-y-3 overflow-y-auto pr-1"
-          >
-            <div
-              v-for="turn in turns"
-              :key="turn.index"
-              :ref="(element) => setTurnRef(turn.index, element)"
-            >
-              <TranscriptBubble
-                :highlighted="activeTurnIndices.includes(turn.index)"
-                :tone="selectedTone"
-                :turn="turn"
-              />
-            </div>
-          </div>
-          <EmptyState
-            v-else
-            description="This call does not have normalized transcript turns yet."
-            title="No transcript available"
-          />
-        </section>
-
-        <section class="rounded-lg border border-border bg-white p-6 shadow-card">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <h2 class="text-lg font-semibold text-content-primary">
-                Evaluation Panel
-              </h2>
-              <p class="text-sm text-content-secondary">
-                Transcript-backed AI analysis and recommendations.
-              </p>
-            </div>
-            <div class="text-right">
-              <p class="text-xs uppercase tracking-wide text-content-tertiary">
-                Overall Score
-              </p>
-              <p :class="overallScoreClass" class="mt-1 text-3xl font-semibold">
-                {{ overallScoreLabel }}
-              </p>
-            </div>
-          </div>
-
-          <EmptyState
-            v-if="!callDetail.evaluation"
-            action-label="Run Evaluation"
-            description="This call has not been evaluated yet."
-            title="No evaluation stored"
-            @action="runEvaluation"
-          />
-
-          <template v-else>
-            <div class="mt-6 space-y-6">
-              <section>
-                <div class="mb-3 flex items-center justify-between">
-                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                    Evaluated Rubric Items
-                  </h3>
-                  <span class="text-xs text-content-secondary">
-                    {{ evaluatedRubricItems.length }} items
-                  </span>
-                </div>
-                <div class="mb-4 grid gap-3 md:grid-cols-3">
-                  <div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-700">
-                      Needs Attention
-                    </p>
-                    <p class="mt-2 text-2xl font-semibold text-rose-700">
-                      {{ attentionRubricItems.length }}
-                    </p>
-                  </div>
-                  <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                      Passed
-                    </p>
-                    <p class="mt-2 text-2xl font-semibold text-emerald-700">
-                      {{ passedRubricItems.length }}
-                    </p>
-                  </div>
-                  <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                      Uncertain
-                    </p>
-                    <p class="mt-2 text-2xl font-semibold text-amber-700">
-                      {{ uncertainRubricItems.length }}
-                    </p>
-                  </div>
-                </div>
-                <div
-                  v-if="evaluatedRubricItems.length"
-                  class="space-y-3"
-                >
-                  <div
-                    v-if="attentionRubricItems.length"
-                    class="space-y-3"
-                  >
-                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-700">
-                      Needs Attention
-                    </p>
-                    <FindingItem
-                      v-for="finding in attentionRubricItems"
-                      :key="findingKey(finding)"
-                      :finding="finding"
-                      :selected="selectedFindingKey === findingKey(finding)"
-                      show-evidence-strength
-                      @select="selectFinding"
-                    />
-                  </div>
-                  <div
-                    v-if="passedRubricItems.length"
-                    class="space-y-3"
-                  >
-                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                      Passed
-                    </p>
-                    <FindingItem
-                      v-for="finding in passedRubricItems"
-                      :key="findingKey(finding)"
-                      :finding="finding"
-                      :selected="selectedFindingKey === findingKey(finding)"
-                      show-evidence-strength
-                      @select="selectFinding"
-                    />
-                  </div>
-                  <div
-                    v-if="uncertainRubricItems.length"
-                    class="space-y-3"
-                  >
-                    <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                      Uncertain
-                    </p>
-                    <FindingItem
-                      v-for="finding in uncertainRubricItems"
-                      :key="findingKey(finding)"
-                      :finding="finding"
-                      :selected="selectedFindingKey === findingKey(finding)"
-                      show-evidence-strength
-                      @select="selectFinding"
-                    />
-                  </div>
-                </div>
-                <p
-                  v-else
-                  class="text-sm text-content-secondary"
-                >
-                  No rubric items were evaluated for this call yet.
-                </p>
-              </section>
-
-              <section>
-                <div class="mb-3 flex items-center justify-between">
-                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                    Emergent Findings
-                  </h3>
-                  <span class="text-xs text-content-secondary">
-                    {{ emergentFindings.length }} findings
-                  </span>
-                </div>
-                <div
-                  v-if="emergentFindings.length"
-                  class="space-y-3"
-                >
-                  <FindingItem
-                    v-for="finding in emergentFindings"
-                    :key="findingKey(finding)"
-                    :finding="finding"
-                    :selected="selectedFindingKey === findingKey(finding)"
-                    show-evidence-strength
-                    @select="selectFinding"
-                  />
-                </div>
-                <p
-                  v-else
-                  class="text-sm text-content-secondary"
-                >
-                  No emergent findings were surfaced outside the rubric.
-                </p>
-              </section>
-
-              <section>
-                <div class="mb-3 flex items-center justify-between">
-                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                    Out Of Scope
-                  </h3>
-                  <span class="text-xs text-content-secondary">
-                    {{ outOfScopeItems.length }} items
-                  </span>
-                </div>
-                <div
-                  v-if="outOfScopeItems.length"
-                  class="space-y-3"
-                >
-                  <article
-                    v-for="item in outOfScopeItems"
-                    :key="item.rubricItemId"
-                    class="rounded-lg border border-border bg-surface-tertiary p-4"
-                  >
-                    <div class="flex items-start justify-between gap-3">
-                      <div>
-                        <h4 class="text-sm font-semibold text-content-primary">
-                          {{ item.label }}
-                        </h4>
-                        <p class="mt-2 text-sm leading-6 text-content-secondary">
-                          {{ item.reason }}
-                        </p>
-                      </div>
-                      <span class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-content-secondary">
-                        Not applicable
-                      </span>
-                    </div>
-                  </article>
-                </div>
-                <p
-                  v-else
-                  class="text-sm text-content-secondary"
-                >
-                  All rubric items in scope were evaluated.
-                </p>
-              </section>
-
-              <section>
-                <div class="mb-3 flex items-center justify-between">
-                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                    Use Actions
-                  </h3>
-                  <span class="text-xs text-content-secondary">
-                    {{ useActions.length }} items
-                  </span>
-                </div>
-                <div
-                  v-if="useActions.length"
-                  class="space-y-3"
-                >
-                  <button
-                    v-for="action in useActions"
-                    :key="action.id"
-                    class="w-full rounded-lg border border-border bg-surface-tertiary p-4 text-left hover:border-primary"
-                    type="button"
-                    @click="selectUseAction(action)"
-                  >
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span
-                        :class="useActionTone(action.actionType)"
-                        class="rounded-full px-2.5 py-1 text-xs font-semibold"
-                      >
-                        {{ useActionLabel(action.actionType) }}
-                      </span>
-                      <span
-                        v-if="action.severity"
-                        class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-content-secondary"
-                      >
-                        {{ humanizeCategory(action.severity) }}
-                      </span>
-                    </div>
-                    <h4 class="mt-3 text-sm font-semibold text-content-primary">
-                      {{ action.finding }}
-                    </h4>
-                    <p class="mt-2 text-sm leading-6 text-content-secondary">
-                      {{ action.recommendation }}
-                    </p>
-                    <p
-                      v-if="action.turnIndices?.length"
-                      class="mt-2 text-xs text-content-tertiary"
-                    >
-                      Turns: {{ action.turnIndices.join(', ') }}
-                    </p>
-                  </button>
-                </div>
-                <p
-                  v-else
-                  class="text-sm text-content-secondary"
-                >
-                  No action-oriented intervention items were generated for this call.
-                </p>
-              </section>
-
-              <section>
-                <div class="mb-3 flex items-center justify-between">
-                  <h3 class="text-sm font-semibold uppercase tracking-wide text-content-tertiary">
-                    Recommendations
-                  </h3>
-                  <span class="text-xs text-content-secondary">
-                    {{ recommendations.length }} items
-                  </span>
-                </div>
-                <div class="space-y-3">
-                  <article
-                    v-for="recommendation in recommendations"
-                    :key="recommendation.title || recommendation.label || recommendation.recommendation"
-                    class="rounded-lg border border-border bg-surface-tertiary p-4"
-                  >
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span
-                        v-if="recommendation.priority"
-                        class="rounded-full bg-primary-light px-2.5 py-1 text-xs font-semibold text-primary"
-                      >
-                        Priority {{ recommendation.priority }}
-                      </span>
-                      <span
-                        v-if="recommendation.impactArea"
-                        class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-content-secondary"
-                      >
-                        {{ recommendation.impactArea }}
-                      </span>
-                    </div>
-                    <h4 class="mt-3 text-sm font-semibold text-content-primary">
-                      {{ recommendation.title || recommendation.label || 'Recommendation' }}
-                    </h4>
-                    <p class="mt-2 text-sm leading-6 text-content-secondary">
-                      {{ recommendation.description || recommendation.recommendation || 'No recommendation detail is available.' }}
-                    </p>
-                  </article>
-                </div>
-              </section>
-            </div>
-          </template>
-        </section>
-      </div>
-    </template>
-  </section>
-</template>
-
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
+import { ArrowLeft, Database, FileText, Lightbulb, RefreshCw, TriangleAlert, Wrench } from '@lucide/vue'
 
-import EmptyState from '../components/dashboard/EmptyState.vue'
-import FindingItem from '../components/dashboard/FindingItem.vue'
-import ScoreBadge from '../components/dashboard/ScoreBadge.vue'
-import TranscriptBubble from '../components/dashboard/TranscriptBubble.vue'
-import { useCall } from '../composables/useCall.js'
-import { formatDateTime, formatDuration, formatScore, getScoreTone, humanizeCategory } from '../utils/formatters.js'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ScoreBadge from '@/components/common/ScoreBadge.vue'
+import FindingCard from '@/components/dashboard/FindingCard.vue'
+import RecommendationCard from '@/components/dashboard/RecommendationCard.vue'
+import TranscriptBubble from '@/components/dashboard/TranscriptBubble.vue'
+import UseActionCard from '@/components/dashboard/UseActionCard.vue'
+import { useCall } from '@/composables/useCall.js'
+import { formatDateTime, formatDuration, humanizeCategory } from '@/utils/formatters.js'
 
 const route = useRoute()
-const { data, error, evaluate, evaluationError, evaluationLoading, load, loading } = useCall()
-const turnRefs = new Map()
-const selectedFinding = ref(null)
+const callId = computed(() => route.params.id)
+const { call, isLoading, isError, error, evaluate, evaluating } = useCall(callId)
+
 const isEmbedded = computed(() => route.query.embedded === 'true' || window.__VOICE_AI_EMBED__?.embedded === true)
+const detail = computed(() => call.value)
+const evaluation = computed(() => detail.value?.evaluation || null)
+const turns = computed(() => detail.value?.call?.transcriptTurns || [])
+const rubricItems = computed(() => evaluation.value?.evaluatedRubricItems || [])
+const emergentFindings = computed(() => evaluation.value?.emergentFindings || [])
+const outOfScopeItems = computed(() => evaluation.value?.outOfScopeItems || [])
+const useActions = computed(() => evaluation.value?.useActions || [])
+const recommendations = computed(() => evaluation.value?.recommendations || [])
+const extractedEntries = computed(() => Object.entries(detail.value?.call?.extractedData || {}))
+const executedActions = computed(() => (Array.isArray(detail.value?.call?.executedActions) ? detail.value.call.executedActions : []))
 
-const callDetail = computed(() => data.value)
-const evaluatedRubricItems = computed(() => (
-  (callDetail.value?.evaluation?.evaluatedRubricItems || []).map((item) => ({
-    ...item,
-    passed: normalizePassedStatus(item.status),
-    source: 'llm_semantic',
-  }))
-))
-const attentionRubricItems = computed(() => evaluatedRubricItems.value.filter((item) => item.passed === false))
-const passedRubricItems = computed(() => evaluatedRubricItems.value.filter((item) => item.passed === true))
-const uncertainRubricItems = computed(() => evaluatedRubricItems.value.filter((item) => item.passed === null))
-const emergentFindings = computed(() => (
-  (callDetail.value?.evaluation?.emergentFindings || []).map((item) => ({
-    ...item,
-    passed: normalizePassedStatus(item.status),
-    source: 'llm_semantic',
-  }))
-))
-const outOfScopeItems = computed(() => callDetail.value?.evaluation?.outOfScopeItems || [])
-const recommendations = computed(() => callDetail.value?.evaluation?.recommendations || [])
-const useActions = computed(() => callDetail.value?.evaluation?.useActions || [])
-const turns = computed(() => callDetail.value?.call?.transcriptTurns || [])
+const attentionItems = computed(() => rubricItems.value.filter((item) => item.status === 'failed' || item.status === 'partially_met'))
+const passedItems = computed(() => rubricItems.value.filter((item) => item.status === 'passed'))
+const uncertainItems = computed(() => rubricItems.value.filter((item) => item.status === 'uncertain'))
+const hasCritical = computed(() => attentionItems.value.some((item) => item.severity === 'critical')
+  || emergentFindings.value.some((item) => item.severity === 'critical' && item.status !== 'passed'))
+
+const selectedFinding = ref(null)
 const activeTurnIndices = computed(() => selectedFinding.value?.evidence?.turnIndices || [])
-const selectedFindingKey = computed(() => (selectedFinding.value ? findingKey(selectedFinding.value) : ''))
-const selectedTone = computed(() => {
-  if (!selectedFinding.value) {
-    return 'warn'
-  }
-
-  if (selectedFinding.value.passed === true) {
-    return 'pass'
-  }
-
-  if (selectedFinding.value.passed === false) {
-    return 'fail'
-  }
-
-  return 'warn'
-})
-const overallScoreLabel = computed(() => formatScore(callDetail.value?.evaluation?.overallScore))
-const overallScoreClass = computed(() => {
-  const tone = getScoreTone(callDetail.value?.evaluation?.overallScore)
-
-  if (tone === 'pass') {
-    return 'text-status-pass'
-  }
-
-  if (tone === 'warn') {
-    return 'text-status-warn'
-  }
-
-  if (tone === 'fail') {
-    return 'text-status-fail'
-  }
-
-  return 'text-content-primary'
-})
-const transcriptCountLabel = computed(() => `${turns.value.length} transcript turns`)
-const evaluationButtonLabel = computed(() => (callDetail.value?.evaluation ? 'Re-run Evaluation' : 'Run Evaluation'))
-
-function getSharedQuery() {
-  return isEmbedded.value
-    ? { ...route.query, embedded: 'true' }
-    : route.query
-}
 
 function findingKey(finding) {
-  return finding.id || finding.checkId || finding.rubricItemId || finding.label
+  return finding?.id || finding?.rubricItemId || finding?.label || ''
 }
 
-function normalizePassedStatus(status) {
-  if (status === 'passed') {
-    return true
-  }
+const selectedKey = computed(() => findingKey(selectedFinding.value))
 
-  if (status === 'uncertain') {
-    return null
-  }
-
-  return false
-}
-
-function setTurnRef(index, element) {
-  if (element) {
-    turnRefs.set(index, element)
-    return
-  }
-
-  turnRefs.delete(index)
+function isSelected(finding) {
+  return Boolean(selectedKey.value) && findingKey(finding) === selectedKey.value
 }
 
 function selectFinding(finding) {
@@ -574,60 +56,430 @@ function selectFinding(finding) {
 }
 
 function selectUseAction(action) {
-  selectedFinding.value = {
-    evidence: {
-      turnIndices: action.turnIndices || [],
-    },
-    label: action.finding,
-  }
+  selectedFinding.value = { evidence: { turnIndices: action.turnIndices || [] }, id: action.id, label: action.finding }
 }
 
-function useActionLabel(actionType) {
-  if (actionType === 'human_intervention') {
-    return 'Human intervention'
-  }
+function onTurnSelect(index) {
+  const match = [...rubricItems.value, ...emergentFindings.value]
+    .find((finding) => (finding.evidence?.turnIndices || []).includes(index))
 
-  if (actionType === 'script_training') {
-    return 'Script training'
-  }
-
-  return 'Workflow fix'
+  selectedFinding.value = match || { evidence: { turnIndices: [index] }, label: `Turn ${index}` }
 }
 
-function useActionTone(actionType) {
-  if (actionType === 'human_intervention') {
-    return 'bg-rose-100 text-rose-700'
-  }
-
-  if (actionType === 'script_training') {
-    return 'bg-amber-100 text-amber-700'
-  }
-
-  return 'bg-sky-100 text-sky-700'
+function getSharedQuery() {
+  return isEmbedded.value ? { ...route.query, embedded: 'true' } : route.query
 }
 
-function reload() {
-  load(route.params.id)
-}
-
-async function runEvaluation() {
-  await evaluate(route.params.id)
-}
-
-watch(() => route.params.id, () => {
-  selectedFinding.value = null
-  reload()
-}, { immediate: true })
 watch(activeTurnIndices, async (indices) => {
   if (!indices.length) {
     return
   }
-
   await nextTick()
-  const firstTurn = turnRefs.get(indices[0])
-  firstTurn?.scrollIntoView({
-    behavior: 'smooth',
-    block: 'center',
-  })
+  document.getElementById(`turn-${indices[0]}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+})
+
+watch(callId, () => {
+  selectedFinding.value = null
 })
 </script>
+
+<template>
+  <section class="space-y-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <RouterLink
+        class="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+        :to="{ path: '/', hash: '#calls', query: getSharedQuery() }"
+      >
+        <ArrowLeft class="size-4" />
+        Call logs
+      </RouterLink>
+      <Button
+        variant="outline"
+        size="sm"
+        :disabled="evaluating"
+        @click="evaluate"
+      >
+        <RefreshCw :class="['size-4', evaluating && 'animate-spin']" />
+        {{ evaluating ? 'Evaluating…' : (evaluation ? 'Re-run evaluation' : 'Run evaluation') }}
+      </Button>
+    </div>
+
+    <div
+      v-if="isLoading"
+      class="space-y-4"
+    >
+      <Skeleton class="h-28 rounded-xl" />
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <Skeleton class="h-150 rounded-xl" />
+        <Skeleton class="h-150 rounded-xl" />
+      </div>
+    </div>
+
+    <div
+      v-else-if="isError"
+      class="rounded-lg border border-rose-200 bg-rose-50 p-5"
+    >
+      <p class="text-sm font-medium text-rose-700">
+        {{ error?.message || 'Failed to load call.' }}
+      </p>
+    </div>
+
+    <EmptyState
+      v-else-if="!detail"
+      description="This call record is not available yet."
+      title="Call not found"
+    />
+
+    <template v-else>
+      <Card>
+        <CardContent class="space-y-4 p-6">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-muted-foreground">
+                {{ detail.agent.businessName || 'Unknown business' }}
+              </p>
+              <h1 class="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+                {{ detail.agent.agentName || 'Voice AI call' }}
+              </h1>
+              <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <span>{{ formatDateTime(detail.call.calledAt) }}</span>
+                <span>{{ formatDuration(detail.call.duration) }}</span>
+                <span>{{ turns.length }} turns</span>
+              </div>
+            </div>
+            <ScoreBadge
+              :score="evaluation?.overallScore"
+              size="lg"
+            />
+          </div>
+
+          <div
+            v-if="hasCritical"
+            class="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700"
+          >
+            <TriangleAlert class="size-4 shrink-0" />
+            This call has a critical finding that needs attention.
+          </div>
+
+          <div
+            v-if="evaluation?.callPath"
+            class="rounded-lg bg-muted px-4 py-3"
+          >
+            <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Call path
+            </p>
+            <p class="mt-1 text-sm leading-relaxed text-foreground">
+              {{ evaluation.callPath }}
+            </p>
+          </div>
+
+          <div
+            v-if="detail.agent.rubricSummary"
+            class="text-sm text-muted-foreground"
+          >
+            <span class="font-medium text-foreground">{{ detail.agent.rubricSummary.agentGoalSummary }}</span>
+            <span v-if="detail.agent.rubricSummary.primaryGoals?.length"> · Goals: {{ detail.agent.rubricSummary.primaryGoals.join(', ') }}</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card v-if="detail.call.summary">
+        <CardHeader>
+          <CardTitle class="flex items-center gap-2 text-base">
+            <FileText class="size-4 text-muted-foreground" />
+            Call summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p class="text-sm leading-relaxed text-muted-foreground">
+            {{ detail.call.summary }}
+          </p>
+        </CardContent>
+      </Card>
+
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)] xl:items-start">
+        <Card class="overflow-hidden">
+          <CardHeader>
+            <CardTitle class="text-base">
+              Transcript
+            </CardTitle>
+            <p class="text-sm text-muted-foreground">
+              Click a finding to jump here — or click a turn to surface the findings that cite it.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div
+              v-if="turns.length"
+              class="space-y-2.5"
+            >
+              <TranscriptBubble
+                v-for="turn in turns"
+                :key="turn.index"
+                :turn="turn"
+                :highlighted="activeTurnIndices.includes(turn.index)"
+                :dimmed="activeTurnIndices.length > 0"
+                @select="onTurnSelect"
+              />
+            </div>
+            <EmptyState
+              v-else
+              description="This call does not have normalized transcript turns yet."
+              title="No transcript available"
+            />
+          </CardContent>
+        </Card>
+
+        <div class="space-y-3 xl:sticky xl:top-6 xl:self-start">
+          <EmptyState
+            v-if="!evaluation"
+            :icon="Lightbulb"
+            action-label="Run evaluation"
+            description="This call has not been evaluated yet."
+            title="No evaluation stored"
+            @action="evaluate"
+          />
+
+          <template v-else>
+            <Accordion
+              type="single"
+              collapsible
+              default-value="rubric-findings"
+              class="rounded-lg border bg-card px-4"
+            >
+              <AccordionItem
+                value="rubric-findings"
+                class="border-none"
+              >
+                <AccordionTrigger class="hover:no-underline">
+                  <span class="flex flex-1 flex-wrap items-center justify-between gap-2 pr-2">
+                    <span class="text-sm font-semibold text-foreground">Rubric findings</span>
+                    <span class="flex items-center gap-1.5 text-xs font-normal">
+                      <span class="rounded-full bg-rose-100 px-2 py-0.5 font-semibold text-rose-700">{{ attentionItems.length }} attn</span>
+                      <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">{{ passedItems.length }} pass</span>
+                      <span class="rounded-full bg-zinc-100 px-2 py-0.5 font-semibold text-zinc-600">{{ uncertainItems.length }} unc</span>
+                    </span>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent class="space-y-4">
+                  <div
+                    v-if="attentionItems.length"
+                    class="space-y-2"
+                  >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-rose-600">
+                      Needs attention
+                    </p>
+                    <FindingCard
+                      v-for="finding in attentionItems"
+                      :key="findingKey(finding)"
+                      :finding="finding"
+                      :selected="isSelected(finding)"
+                      @select="selectFinding"
+                    />
+                  </div>
+                  <div
+                    v-if="passedItems.length"
+                    class="space-y-2"
+                  >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+                      Passed
+                    </p>
+                    <FindingCard
+                      v-for="finding in passedItems"
+                      :key="findingKey(finding)"
+                      :finding="finding"
+                      :selected="isSelected(finding)"
+                      @select="selectFinding"
+                    />
+                  </div>
+                  <div
+                    v-if="uncertainItems.length"
+                    class="space-y-2"
+                  >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      Uncertain
+                    </p>
+                    <FindingCard
+                      v-for="finding in uncertainItems"
+                      :key="findingKey(finding)"
+                      :finding="finding"
+                      :selected="isSelected(finding)"
+                      @select="selectFinding"
+                    />
+                  </div>
+                  <p
+                    v-if="!rubricItems.length"
+                    class="text-sm text-muted-foreground"
+                  >
+                    No rubric items were evaluated for this call.
+                  </p>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            <Accordion
+              v-if="emergentFindings.length"
+              type="single"
+              collapsible
+              class="rounded-lg border bg-card px-4"
+            >
+              <AccordionItem
+                value="discovered"
+                class="border-none"
+              >
+                <AccordionTrigger class="text-sm font-semibold text-foreground hover:no-underline">
+                  Discovered issues ({{ emergentFindings.length }})
+                </AccordionTrigger>
+                <AccordionContent class="space-y-2">
+                  <FindingCard
+                    v-for="finding in emergentFindings"
+                    :key="findingKey(finding)"
+                    :finding="finding"
+                    :selected="isSelected(finding)"
+                    @select="selectFinding"
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            <Accordion
+              v-if="useActions.length"
+              type="single"
+              collapsible
+              class="rounded-lg border bg-card px-4"
+            >
+              <AccordionItem
+                value="use-actions"
+                class="border-none"
+              >
+                <AccordionTrigger class="text-sm font-semibold text-foreground hover:no-underline">
+                  What to do about this call ({{ useActions.length }})
+                </AccordionTrigger>
+                <AccordionContent class="space-y-2.5">
+                  <UseActionCard
+                    v-for="action in useActions"
+                    :key="action.id"
+                    :action="action"
+                    selectable
+                    :selected="selectedKey === action.id"
+                    @select="selectUseAction"
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            <Accordion
+              v-if="recommendations.length"
+              type="single"
+              collapsible
+              class="rounded-lg border bg-card px-4"
+            >
+              <AccordionItem
+                value="recommendations"
+                class="border-none"
+              >
+                <AccordionTrigger class="text-sm font-semibold text-foreground hover:no-underline">
+                  Recommendations ({{ recommendations.length }})
+                </AccordionTrigger>
+                <AccordionContent class="space-y-2.5">
+                  <RecommendationCard
+                    v-for="(recommendation, index) in recommendations"
+                    :key="recommendation.title || index"
+                    :recommendation="recommendation"
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            <Accordion
+              v-if="outOfScopeItems.length"
+              type="single"
+              collapsible
+              class="rounded-lg border bg-card px-4"
+            >
+              <AccordionItem
+                value="out-of-scope"
+                class="border-none"
+              >
+                <AccordionTrigger class="text-sm font-semibold text-foreground hover:no-underline">
+                  Out of scope ({{ outOfScopeItems.length }})
+                </AccordionTrigger>
+                <AccordionContent class="space-y-2">
+                  <div
+                    v-for="item in outOfScopeItems"
+                    :key="item.rubricItemId"
+                    class="rounded-md bg-muted px-3 py-2"
+                  >
+                    <p class="text-sm font-medium text-foreground">
+                      {{ item.label }}
+                    </p>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                      {{ item.reason }}
+                    </p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </template>
+        </div>
+      </div>
+
+      <div
+        v-if="extractedEntries.length || executedActions.length"
+        class="grid gap-6 lg:grid-cols-2"
+      >
+        <Card v-if="extractedEntries.length">
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2 text-base">
+              <Database class="size-4 text-muted-foreground" />
+              Extracted data
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl class="space-y-2">
+              <div
+                v-for="[key, value] in extractedEntries"
+                :key="key"
+                class="flex justify-between gap-3 border-b pb-2 text-sm last:border-none last:pb-0"
+              >
+                <dt class="text-muted-foreground">
+                  {{ humanizeCategory(key) }}
+                </dt>
+                <dd class="max-w-[60%] truncate text-right font-medium text-foreground">
+                  {{ typeof value === 'object' ? JSON.stringify(value) : value }}
+                </dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+
+        <Card v-if="executedActions.length">
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2 text-base">
+              <Wrench class="size-4 text-muted-foreground" />
+              Executed actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul class="space-y-2">
+              <li
+                v-for="(action, index) in executedActions"
+                :key="action.actionId || index"
+                class="rounded-md bg-muted px-3 py-2 text-sm"
+              >
+                <p class="font-medium text-foreground">
+                  {{ action.actionName || action.actionType || 'Action' }}
+                </p>
+                <p
+                  v-if="action.actionType"
+                  class="text-xs text-muted-foreground"
+                >
+                  {{ humanizeCategory(action.actionType) }}
+                </p>
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+      </div>
+    </template>
+  </section>
+</template>

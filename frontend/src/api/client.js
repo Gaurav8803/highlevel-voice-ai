@@ -24,13 +24,18 @@ async function parseJson(response) {
 
 async function apiRequest(path, options = {}) {
   const { body, headers, method = 'GET' } = options
+  const requestHeaders = {
+    'Accept': 'application/json',
+    ...headers,
+  }
+
+  if (body !== undefined) {
+    requestHeaders['Content-Type'] = 'application/json'
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
-    body: body ? JSON.stringify(body) : undefined,
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      ...headers,
-    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers: requestHeaders,
     method,
   })
 

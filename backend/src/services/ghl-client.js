@@ -2,6 +2,7 @@ import process from 'node:process'
 
 const DEFAULT_API_BASE = 'https://services.leadconnectorhq.com'
 const DEFAULT_API_VERSION = '2021-07-28'
+const MAX_CALL_LOG_PAGE_SIZE = 50
 
 function appendQueryParams(url, params) {
   for (const [key, value] of Object.entries(params)) {
@@ -83,6 +84,27 @@ function extractObject(payload, keys) {
   throw new Error('Unexpected GHL response shape.')
 }
 
+function getPaginationTotalPages(payload) {
+  const candidates = [
+    payload?.meta?.totalPages,
+    payload?.meta?.total_pages,
+    payload?.pagination?.totalPages,
+    payload?.pagination?.total_pages,
+    payload?.data?.meta?.totalPages,
+    payload?.data?.meta?.total_pages,
+  ]
+
+  for (const value of candidates) {
+    const parsedValue = Number.parseInt(value, 10)
+
+    if (Number.isInteger(parsedValue) && parsedValue > 0) {
+      return parsedValue
+    }
+  }
+
+  return null
+}
+
 function assertRequiredConfig(client) {
   if (!client.apiBase || !client.token || !client.locationId || !client.apiVersion) {
     throw new Error('GHL client is missing one or more required configuration values.')
@@ -152,15 +174,59 @@ class GhlClient {
   }
 
   async listCallLogs({ agentId, page, pageSize, startDate, endDate } = {}) {
-    const payload = await this._request('GET', '/voice-ai/dashboard/call-logs', {
-      agentId,
-      endDate,
-      page,
-      pageSize,
-      startDate,
-    })
+    const normalizedPageSize = pageSize
+      ? Math.min(pageSize, MAX_CALL_LOG_PAGE_SIZE)
+      : undefined
 
-    return extractArray(payload, ['callLogs', 'calls'])
+    if (page) {
+      const payload = await this._request('GET', '/voice-ai/dashboard/call-logs', {
+        agentId,
+        endDate,
+        page,
+        pageSize: normalizedPageSize,
+        startDate,
+      })
+
+      return extractArray(payload, ['callLogs', 'calls'])
+    }
+
+    const effectivePageSize = normalizedPageSize || MAX_CALL_LOG_PAGE_SIZE
+    const allCallLogs = []
+    let currentPage = 1
+    let totalPages = null
+
+    while (true) {
+      const payload = await this._request('GET', '/voice-ai/dashboard/call-logs', {
+        agentId,
+        endDate,
+        page: currentPage,
+        pageSize: effectivePageSize,
+        startDate,
+      })
+      const pageCallLogs = extractArray(payload, ['callLogs', 'calls'])
+
+      allCallLogs.push(...pageCallLogs)
+
+      if (totalPages === null) {
+        totalPages = getPaginationTotalPages(payload)
+      }
+
+      if (pageCallLogs.length === 0) {
+        break
+      }
+
+      if (totalPages !== null && currentPage >= totalPages) {
+        break
+      }
+
+      if (pageCallLogs.length < effectivePageSize) {
+        break
+      }
+
+      currentPage += 1
+    }
+
+    return allCallLogs
   }
 
   async getCallLog(callId) {

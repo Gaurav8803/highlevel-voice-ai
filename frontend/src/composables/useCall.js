@@ -1,49 +1,34 @@
-import { ref } from 'vue'
+import { toValue } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { toast } from 'vue-sonner'
 
-import { getCallDetail, triggerEvaluation } from '../api/client.js'
+import { getCallDetail, triggerEvaluation } from '@/api/client.js'
 
-export function useCall() {
-  const data = ref(null)
-  const error = ref('')
-  const evaluationError = ref('')
-  const evaluationLoading = ref(false)
-  const loading = ref(false)
+export function useCall(callId) {
+  const queryClient = useQueryClient()
 
-  async function load(callId) {
-    loading.value = true
-    error.value = ''
+  const query = useQuery({
+    queryKey: ['call', callId],
+    queryFn: () => getCallDetail(toValue(callId)),
+    select: (response) => response.data,
+    enabled: () => Boolean(toValue(callId)),
+  })
 
-    try {
-      const response = await getCallDetail(callId)
-      data.value = response.data
-    } catch (loadError) {
-      error.value = loadError.message
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function evaluate(callId) {
-    evaluationLoading.value = true
-    evaluationError.value = ''
-
-    try {
-      await triggerEvaluation(callId)
-      await load(callId)
-    } catch (requestError) {
-      evaluationError.value = requestError.message
-    } finally {
-      evaluationLoading.value = false
-    }
-  }
+  const evaluateMutation = useMutation({
+    mutationFn: () => triggerEvaluation(toValue(callId)),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['call', toValue(callId)] })
+      toast.success('Evaluation complete', { description: 'This call was re-analyzed against the rubric.' })
+    },
+    onError: (error) => toast.error('Evaluation failed', { description: error.message }),
+  })
 
   return {
-    data,
-    error,
-    evaluate,
-    evaluationError,
-    evaluationLoading,
-    load,
-    loading,
+    call: query.data,
+    error: query.error,
+    evaluate: () => evaluateMutation.mutate(),
+    evaluating: evaluateMutation.isPending,
+    isError: query.isError,
+    isLoading: query.isLoading,
   }
 }
