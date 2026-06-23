@@ -3,6 +3,13 @@ import { syncAgents, syncCallLogs } from './ingestion-service.js'
 import { prisma } from './prisma.js'
 
 const TREND_DELTA_THRESHOLD = 5
+const ACTION_RELATED_CHECK_TYPES = new Set([
+  'action_triggered',
+  'appointment_offered',
+  'consent_obtained',
+  'escalation',
+])
+const EXTRACTION_CHECK_TYPES = new Set(['data_extracted'])
 const SEVERITY_PRIORITY = {
   critical: 1,
   high: 2,
@@ -96,10 +103,6 @@ function getUseActionType(finding) {
     return 'script_training'
   }
 
-  if (finding?.category === 'routing' || finding?.category === 'compliance') {
-    return 'human_intervention'
-  }
-
   return 'workflow_fix'
 }
 
@@ -184,45 +187,6 @@ function serializeScorePoint(evaluation) {
     date: evaluation.callLog?.calledAt || evaluation.evaluatedAt,
     score: evaluation.overallScore ?? 0,
   }
-}
-
-function extractCheckGroups(evaluations, predicate) {
-  const checks = []
-
-  for (const evaluation of evaluations) {
-    const evaluationChecks = ensureArray(evaluation.deterministicResults?.checks)
-    for (const check of evaluationChecks) {
-      if (predicate(check)) {
-        checks.push(check)
-      }
-    }
-  }
-
-  return checks
-}
-
-function getActionNameFromCheck(check) {
-  return String(check.label || '').replace(/^Action Executed:\s*/, '').trim()
-}
-
-function buildActionSuccessRates(evaluations) {
-  const checks = extractCheckGroups(evaluations, (check) => check.category === 'actions' && check.label?.startsWith('Action Executed:'))
-  const actionStats = new Map()
-
-  for (const check of checks) {
-    const actionName = getActionNameFromCheck(check)
-    const current = actionStats.get(actionName) || { actionName, attempted: 0, succeeded: 0 }
-    current.attempted += 1
-    current.succeeded += check.passed ? 1 : 0
-    actionStats.set(actionName, current)
-  }
-
-  return [...actionStats.values()]
-    .map((stat) => ({
-      ...stat,
-      rate: stat.attempted ? roundMetric((stat.succeeded / stat.attempted) * 100) : 0,
-    }))
-    .sort((left, right) => right.attempted - left.attempted || left.actionName.localeCompare(right.actionName))
 }
 
 function buildFindingFrequency(evaluations) {
@@ -359,21 +323,175 @@ function buildAgentUseActions(evaluations) {
   })
 }
 
-function getAverageResponseLatency(evaluations) {
-  const checks = extractCheckGroups(evaluations, (check) => check.checkId === 'response_latency')
-  const values = getNumericValues(checks.map((check) => check.evidence?.actual?.averageResponseTime))
-  return average(values)
+function getSemanticEvaluationItems(callLog) {
+  return ensureArray(callLog?.evaluation?.semanticResults?.evaluatedRubricItems)
 }
 
-function getExtractionCompleteness(evaluations) {
-  const checks = extractCheckGroups(evaluations, (check) => check.category === 'extraction')
+function getOutOfScopeItems(callLog) {
+  return ensureArray(callLog?.evaluation?.outOfScopeItems)
+}
 
-  if (checks.length === 0) {
+function getRubricItemMap(rubric) {
+  return new Map(getRubricItems(rubric).map((item) => [item.id, item]))
+}
+
+function getStatusScore(status) {
+  if (status === 'passed') {
+    return 1
+  }
+
+  if (status === 'partially_met') {
+    return 0.5
+  }
+
+  if (status === 'failed') {
     return 0
   }
 
-  const capturedCount = checks.filter((check) => check.passed).length
-  return roundMetric((capturedCount / checks.length) * 100)
+  return null
+}
+
+function createStatusAggregate(seed = {}) {
+  return {
+    applicableCount: 0,
+    failedCount: 0,
+    passedCount: 0,
+    partiallyMetCount: 0,
+    scoreTotal: 0,
+    scorableCount: 0,
+    uncertainCount: 0,
+    ...seed,
+  }
+}
+
+function registerEvaluationStatus(aggregate, status) {
+  aggregate.applicableCount += 1
+
+  if (status === 'passed') {
+    aggregate.passedCount += 1
+  } else if (status === 'partially_met') {
+    aggregate.partiallyMetCount += 1
+  } else if (status === 'failed') {
+    aggregate.failedCount += 1
+  } else {
+    aggregate.uncertainCount += 1
+  }
+
+  const statusScore = getStatusScore(status)
+
+  if (statusScore !== null) {
+    aggregate.scoreTotal += statusScore
+    aggregate.scorableCount += 1
+  }
+}
+
+function finalizeStatusAggregate(aggregate) {
+  return {
+    ...aggregate,
+    rate: aggregate.scorableCount
+      ? roundMetric((aggregate.scoreTotal / aggregate.scorableCount) * 100)
+      : null,
+  }
+}
+
+function buildActionSuccessRates(calls, rubric) {
+  const rubricItemMap = getRubricItemMap(rubric)
+  const actionStats = new Map()
+
+  for (const callLog of calls) {
+    for (const finding of getSemanticEvaluationItems(callLog)) {
+      const rubricItem = rubricItemMap.get(finding.rubricItemId)
+
+      if (!rubricItem || !ACTION_RELATED_CHECK_TYPES.has(rubricItem.checkType)) {
+        continue
+      }
+
+      const current = actionStats.get(rubricItem.id) || createStatusAggregate({
+        actionName: rubricItem.label,
+        checkType: rubricItem.checkType,
+        severity: rubricItem.severity,
+      })
+
+      registerEvaluationStatus(current, finding.status)
+      actionStats.set(rubricItem.id, current)
+    }
+  }
+
+  return [...actionStats.values()]
+    .map(finalizeStatusAggregate)
+    .sort((left, right) => {
+      const severityDelta = getSeverityPriority(left.severity) - getSeverityPriority(right.severity)
+
+      if (severityDelta !== 0) {
+        return severityDelta
+      }
+
+      const leftRate = left.rate ?? -1
+      const rightRate = right.rate ?? -1
+
+      if (leftRate !== rightRate) {
+        return leftRate - rightRate
+      }
+
+      return right.applicableCount - left.applicableCount || left.actionName.localeCompare(right.actionName)
+    })
+}
+
+function getNumericTimestamp(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function getResponseLatencyValues(turns) {
+  const normalizedTurns = ensureArray(turns)
+  const latencies = []
+
+  for (let index = 0; index < normalizedTurns.length - 1; index += 1) {
+    const currentTurn = normalizedTurns[index]
+    const nextTurn = normalizedTurns[index + 1]
+
+    if (currentTurn?.role !== 'user' || nextTurn?.role !== 'agent') {
+      continue
+    }
+
+    const currentEnd = getNumericTimestamp(currentTurn.endTime)
+    const nextStart = getNumericTimestamp(nextTurn.startTime)
+
+    if (currentEnd === null || nextStart === null) {
+      continue
+    }
+
+    const latency = nextStart - currentEnd
+
+    if (latency >= 0) {
+      latencies.push(latency)
+    }
+  }
+
+  return latencies
+}
+
+function getAverageResponseLatency(calls) {
+  const responseLatencies = calls.flatMap((callLog) => getResponseLatencyValues(callLog.transcriptTurns))
+  return average(responseLatencies)
+}
+
+function getExtractionCompleteness(calls, rubric) {
+  const rubricItemMap = getRubricItemMap(rubric)
+  const aggregate = createStatusAggregate()
+
+  for (const callLog of calls) {
+    for (const finding of getSemanticEvaluationItems(callLog)) {
+      const rubricItem = rubricItemMap.get(finding.rubricItemId)
+
+      if (!rubricItem || !EXTRACTION_CHECK_TYPES.has(rubricItem.checkType)) {
+        continue
+      }
+
+      registerEvaluationStatus(aggregate, finding.status)
+    }
+  }
+
+  return finalizeStatusAggregate(aggregate).rate || 0
 }
 
 function getRubricItems(rubric) {
@@ -487,7 +605,15 @@ async function loadAgentDashboardContext(agentId) {
       select: {
         calledAt: true,
         duration: true,
+        evaluation: {
+          select: {
+            outOfScopeItems: true,
+            overallScore: true,
+            semanticResults: true,
+          },
+        },
         id: true,
+        transcriptTurns: true,
       },
       where: {
         agentId,
@@ -525,14 +651,14 @@ async function getAgentDashboard(agentId) {
       calledAt: callLog.calledAt,
       duration: callLog.duration,
       id: callLog.id,
-      overallScore: evaluations.find((evaluation) => evaluation.callLogId === callLog.id)?.overallScore ?? null,
+      overallScore: callLog.evaluation?.overallScore ?? null,
     })),
     metrics: {
-      actionSuccessRates: buildActionSuccessRates(evaluations),
+      actionSuccessRates: buildActionSuccessRates(calls, agent.rubric),
       averageDuration: average(durations),
-      averageResponseLatency: getAverageResponseLatency(evaluations),
+      averageResponseLatency: getAverageResponseLatency(calls),
       averageScore: average(evaluationScores),
-      extractionCompleteness: getExtractionCompleteness(evaluations),
+      extractionCompleteness: getExtractionCompleteness(calls, agent.rubric),
       findingFrequency: buildFindingFrequency(evaluations),
       scoreOverTime: [...evaluations]
         .reverse()

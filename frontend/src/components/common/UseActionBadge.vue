@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { MessageSquareText, UserCog, Wrench } from '@lucide/vue'
+import { MessageSquareText, Wrench } from '@lucide/vue'
 
 import { cn } from '@/lib/utils'
 
@@ -14,11 +14,6 @@ const ACTION_META = {
     icon: MessageSquareText,
     label: 'Script training',
     tone: 'bg-violet-100 text-violet-700 ring-violet-600/20',
-  },
-  human_intervention: {
-    icon: UserCog,
-    label: 'Human intervention',
-    tone: 'bg-rose-100 text-rose-700 ring-rose-600/20',
   },
   workflow_fix: {
     icon: Wrench,

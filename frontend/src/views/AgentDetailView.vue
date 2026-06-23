@@ -46,7 +46,6 @@ const recommendations = computed(() => detail.value?.topRecommendations || [])
 const USE_ACTION_FILTERS = [
   { value: 'all', label: 'All' },
   { value: 'script_training', label: 'Script training' },
-  { value: 'human_intervention', label: 'Human intervention' },
   { value: 'workflow_fix', label: 'Workflow fix' },
 ]
 
@@ -68,6 +67,9 @@ const callColumns = [
 ]
 
 function barTone(rate) {
+  if (typeof rate !== 'number') {
+    return 'bg-zinc-400'
+  }
   if (rate > 80) {
     return 'bg-emerald-500'
   }
@@ -300,7 +302,7 @@ function openCall(call) {
 
           <div class="space-y-3">
             <h3 class="text-sm font-semibold text-foreground">
-              Action success rates
+              Workflow success rates
             </h3>
             <Card v-if="actionSuccessRates.length">
               <CardContent class="space-y-4 p-5">
@@ -310,12 +312,16 @@ function openCall(call) {
                 >
                   <div class="mb-1 flex items-center justify-between gap-3 text-sm">
                     <span class="truncate font-medium text-foreground">{{ action.actionName }}</span>
-                    <span class="shrink-0 text-xs text-muted-foreground">{{ action.succeeded }}/{{ action.attempted }} · {{ Math.round(action.rate) }}%</span>
+                    <span class="shrink-0 text-xs text-muted-foreground">
+                      {{ action.passedCount }} pass
+                      <span v-if="action.partiallyMetCount"> · {{ action.partiallyMetCount }} partial</span>
+                      <span v-if="typeof action.rate === 'number'"> · {{ Math.round(action.rate) }}%</span>
+                    </span>
                   </div>
                   <div class="h-2 overflow-hidden rounded-full bg-muted">
                     <div
                       :class="cn('h-full rounded-full', barTone(action.rate))"
-                      :style="{ width: `${action.rate}%` }"
+                      :style="{ width: `${action.rate || 0}%` }"
                     />
                   </div>
                 </div>
@@ -323,8 +329,8 @@ function openCall(call) {
             </Card>
             <EmptyState
               v-else
-              description="No action-execution data is available for this agent yet."
-              title="No action data"
+              description="Workflow and automation success rates populate once action-related KPIs are evaluated."
+              title="No workflow KPI data"
             />
           </div>
         </TabsContent>
