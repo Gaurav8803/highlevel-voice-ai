@@ -16,7 +16,7 @@ const tabs = [
 
 const isEmbedded = computed(() => route.query.embedded === 'true' || window.__VOICE_AI_EMBED__?.embedded === true)
 const contentClasses = computed(() => (isEmbedded.value ? 'px-4 py-5 sm:px-5' : 'px-4 py-6 sm:px-6 lg:px-8'))
-const shellClasses = computed(() => (isEmbedded.value ? 'bg-transparent' : 'bg-zinc-50'))
+const shellClasses = computed(() => (isEmbedded.value ? 'bg-transparent' : 'bg-background'))
 
 function getSharedQuery() {
   return isEmbedded.value ? { ...route.query, embedded: 'true' } : route.query
@@ -66,9 +66,9 @@ onMounted(syncEmbeddedMode)
 <template>
   <div :class="cn('min-h-screen text-foreground', shellClasses)">
     <div class="mx-auto max-w-[1600px]">
-      <header class="border-b bg-card">
+      <header class="border-b border-border/80 bg-card/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
         <div class="flex items-center gap-2.5 px-4 pt-4 sm:px-6 lg:px-8">
-          <span class="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <span class="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
             <Waypoints class="size-4.5" />
           </span>
           <div class="leading-tight">
@@ -92,7 +92,7 @@ onMounted(syncEmbeddedMode)
             :class="cn(
               'inline-flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors',
               isTabActive(tab.id)
-                ? 'border-primary text-foreground'
+                ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )"
           >

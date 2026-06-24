@@ -59,6 +59,12 @@ function getAgentDetail(id) {
   return apiRequest(`/dashboard/agent/${id}`)
 }
 
+function triggerAgentAnalysis(agentId) {
+  return apiRequest(`/dashboard/agent/${agentId}/analyze`, {
+    method: 'POST',
+  })
+}
+
 function getCallDetail(id) {
   return apiRequest(`/dashboard/call/${id}`)
 }
@@ -95,6 +101,7 @@ export {
   getAgentDetail,
   getCallDetail,
   getDashboardOverview,
+  triggerAgentAnalysis,
   triggerEvaluation,
   triggerFullSync,
   triggerSync,

@@ -23,7 +23,16 @@ import { formatDateTime, formatDuration, formatPercent } from '@/utils/formatter
 const route = useRoute()
 const router = useRouter()
 const agentId = computed(() => route.params.id)
-const { agent, isLoading, isError, error, regenerateRubric, rubricPending } = useAgent(agentId)
+const {
+  agent,
+  isLoading,
+  isError,
+  error,
+  regenerateRubric,
+  rubricPending,
+  refreshAnalysis,
+  analysisPending,
+} = useAgent(agentId)
 
 const isEmbedded = computed(() => route.query.embedded === 'true' || window.__VOICE_AI_EMBED__?.embedded === true)
 const detail = computed(() => agent.value)
@@ -70,7 +79,7 @@ const callColumns = [
 
 function barTone(rate) {
   if (typeof rate !== 'number') {
-    return 'bg-zinc-400'
+    return 'bg-slate-400'
   }
   if (rate > 80) {
     return 'bg-emerald-500'
@@ -151,7 +160,7 @@ function openCall(call) {
               <button
                 v-if="isLongDescription"
                 type="button"
-                class="mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                class="mt-1 text-xs font-medium text-primary hover:text-primary/80"
                 @click="descriptionExpanded = !descriptionExpanded"
               >
                 {{ descriptionExpanded ? 'Show less' : 'Read more' }}
@@ -163,15 +172,26 @@ function openCall(call) {
               :score="metrics.averageScore"
               size="lg"
             />
-            <Button
-              variant="outline"
-              size="sm"
-              :disabled="rubricPending"
-              @click="regenerateRubric"
-            >
-              <RefreshCw :class="['size-4', rubricPending && 'animate-spin']" />
-              {{ rubricPending ? 'Generating…' : 'Refresh rubric' }}
-            </Button>
+            <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="analysisPending"
+                @click="refreshAnalysis"
+              >
+                <RefreshCw :class="['size-4', analysisPending && 'animate-spin']" />
+                {{ analysisPending ? 'Refreshing analysis…' : 'Refresh analysis' }}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="rubricPending"
+                @click="regenerateRubric"
+              >
+                <RefreshCw :class="['size-4', rubricPending && 'animate-spin']" />
+                {{ rubricPending ? 'Generating…' : 'Refresh rubric' }}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -348,14 +368,63 @@ function openCall(call) {
               </CardTitle>
             </CardHeader>
             <CardContent class="space-y-2">
+              <p
+                v-if="detail.agentAnalysisGeneratedAt"
+                class="text-xs text-muted-foreground"
+              >
+                Last refreshed {{ formatDateTime(detail.agentAnalysisGeneratedAt) }}
+              </p>
               <p class="text-sm leading-relaxed text-muted-foreground">
                 {{ agentAnalysisSummary }}
               </p>
               <p class="text-xs text-muted-foreground">
-                Based on the current agent prompt, rubric, and all stored call transcripts for this agent.
+                Based on the current agent prompt plus compact call-level findings and selected evidence from stored evaluations.
               </p>
             </CardContent>
           </Card>
+          <Card v-else>
+            <CardHeader>
+              <CardTitle class="text-base">
+                Agent-wide analysis
+              </CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-3">
+              <p class="text-sm leading-relaxed text-muted-foreground">
+                No cached agent-wide analysis is available yet.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="analysisPending"
+                @click="refreshAnalysis"
+              >
+                <RefreshCw :class="['size-4', analysisPending && 'animate-spin']" />
+                {{ analysisPending ? 'Refreshing analysis…' : 'Generate analysis' }}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-foreground">
+              Top recommendations
+            </h3>
+            <div
+              v-if="recommendations.length"
+              class="grid gap-3"
+            >
+              <RecommendationCard
+                v-for="(recommendation, index) in recommendations"
+                :key="recommendation.title || index"
+                :rank="index + 1"
+                :recommendation="recommendation"
+              />
+            </div>
+            <EmptyState
+              v-else
+              description="Recommendations populate once this agent has semantic evaluations."
+              title="No recommendations yet"
+            />
+          </div>
 
           <div class="space-y-3">
             <div>
@@ -403,28 +472,6 @@ function openCall(call) {
               v-else
               description="Use actions populate once failed findings are aggregated across this agent's calls."
               title="No recommended actions yet"
-            />
-          </div>
-
-          <div class="space-y-3">
-            <h3 class="text-sm font-semibold text-foreground">
-              Top recommendations
-            </h3>
-            <div
-              v-if="recommendations.length"
-              class="grid gap-3"
-            >
-              <RecommendationCard
-                v-for="(recommendation, index) in recommendations"
-                :key="recommendation.title || index"
-                :rank="index + 1"
-                :recommendation="recommendation"
-              />
-            </div>
-            <EmptyState
-              v-else
-              description="Recommendations populate once this agent has semantic evaluations."
-              title="No recommendations yet"
             />
           </div>
         </TabsContent>

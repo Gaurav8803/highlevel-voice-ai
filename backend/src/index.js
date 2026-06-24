@@ -23,6 +23,10 @@ await app.register(cors, {
       /^https:\/\/([a-z0-9-]+\.)*gohighlevel\.com$/,
       /^https:\/\/app\.leadconnectorhq\.com$/,
       /^https:\/\/([a-z0-9-]+\.)*leadconnectorhq\.com$/,
+      /^https:\/\/([a-z0-9-]+\.)*ngrok-free\.app$/,
+      /^https:\/\/([a-z0-9-]+\.)*ngrok-free\.dev$/,
+      /^https:\/\/([a-z0-9-]+\.)*ngrok\.app$/,
+      /^https:\/\/([a-z0-9-]+\.)*ngrok\.dev$/,
       /^http:\/\/localhost(?::\d+)?$/,
       /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
     ]
@@ -38,6 +42,7 @@ const [
   { default: callsRoutes },
   { default: dashboardRoutes },
   { default: embedRoutes },
+  { default: oauthRoutes },
   { ghlClient },
   { llmService },
   { prisma },
@@ -47,6 +52,7 @@ const [
   import('./routes/calls.js'),
   import('./routes/dashboard.js'),
   import('./routes/embed.js'),
+  import('./routes/oauth.js'),
   import('./services/ghl-client.js'),
   import('./services/llm-service.js'),
   import('./services/prisma.js'),
@@ -64,6 +70,7 @@ await app.register(async function apiRoutes(api) {
   await api.register(callsRoutes)
   await api.register(analysisRoutes)
   await api.register(dashboardRoutes)
+  await api.register(oauthRoutes)
 }, { prefix: '/api' })
 
 await app.register(embedRoutes)

@@ -111,6 +111,10 @@ function resolveDistAssetPath(relativePath) {
   return path.join(FRONTEND_DIST_DIR, normalizedPath)
 }
 
+function normalizeEmbedAssetPath(relativePath) {
+  return String(relativePath || '').replace(/^assets[\\/]+/, '')
+}
+
 async function serveDistAsset(reply, relativePath) {
   buildEmbedHeaders(reply)
 
@@ -128,7 +132,7 @@ async function serveDistAsset(reply, relativePath) {
 
 export default async function embedRoutes(fastify) {
   fastify.get('/embed/assets/*', async function embedAssetHandler(request, reply) {
-    return serveDistAsset(reply, path.join('assets', request.params['*']))
+    return serveDistAsset(reply, path.join('assets', normalizeEmbedAssetPath(request.params['*'])))
   })
 
   fastify.get('/embed/favicon.svg', async function embedFaviconHandler(_request, reply) {

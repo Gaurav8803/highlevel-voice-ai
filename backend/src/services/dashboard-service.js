@@ -1,4 +1,4 @@
-import { evaluateAllCalls, generateAgentAnalysis, generateRubric } from './evaluation-service.js'
+import { evaluateAllCalls, generateRubric } from './evaluation-service.js'
 import { syncAgents, syncCallLogs } from './ingestion-service.js'
 import { prisma } from './prisma.js'
 
@@ -570,7 +570,6 @@ async function getDashboardOverview() {
       orderBy: {
         calledAt: 'desc',
       },
-      take: 5,
     }),
     prisma.agent.findMany({
       include: {
@@ -676,15 +675,14 @@ async function loadAgentDashboardContext(agentId) {
 
 async function getAgentDashboard(agentId) {
   const { agent, calls, evaluations } = await loadAgentDashboardContext(agentId)
-  const agentAnalysisResult = await generateAgentAnalysis(agentId)
   const evaluationScores = getNumericValues(evaluations.map((evaluation) => evaluation.overallScore))
   const durations = getNumericValues(calls.map((callLog) => callLog.duration))
-  const agentAnalysis = agentAnalysisResult.analysis || agent.agentAnalysis || null
+  const agentAnalysis = agent.agentAnalysis || null
 
   return {
     agent,
     agentAnalysis,
-    agentAnalysisGeneratedAt: agentAnalysisResult.generatedAt || agent.agentAnalysisGeneratedAt || null,
+    agentAnalysisGeneratedAt: agent.agentAnalysisGeneratedAt || null,
     calls: calls.map((callLog) => ({
       calledAt: callLog.calledAt,
       duration: callLog.duration,

@@ -37,7 +37,7 @@ const details = computed(() => DETAILS.filter((detail) => props.item[detail.key]
           <span class="inline-flex items-center rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
             {{ humanizeCategory(item.checkType) }}
           </span>
-          <span class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-600">
+          <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
             {{ modeLabel }}
           </span>
         </div>

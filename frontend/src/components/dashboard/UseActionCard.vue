@@ -25,7 +25,7 @@ const turnIndices = computed(() => (Array.isArray(props.action.turnIndices) ? pr
     :class="cn(
       'block w-full rounded-lg border bg-card p-4 text-left transition-colors',
       selectable && 'hover:border-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-      selected ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-border',
+      selected ? 'border-blue-400 ring-1 ring-blue-400' : 'border-border',
     )"
     @click="selectable && $emit('select', action)"
   >
@@ -49,7 +49,7 @@ const turnIndices = computed(() => (Array.isArray(props.action.turnIndices) ? pr
       v-if="action.recommendation"
       class="mt-1.5 flex gap-1.5 text-sm leading-relaxed text-muted-foreground"
     >
-      <CornerDownRight class="mt-0.5 size-3.5 shrink-0 text-indigo-500" />
+      <CornerDownRight class="mt-0.5 size-3.5 shrink-0 text-blue-600" />
       <span>{{ action.recommendation }}</span>
     </p>
 
@@ -63,7 +63,7 @@ const turnIndices = computed(() => (Array.isArray(props.action.turnIndices) ? pr
 
     <p
       v-if="selectable && turnIndices.length"
-      class="mt-2 text-[11px] font-medium text-indigo-600"
+      class="mt-2 text-[11px] font-medium text-blue-700"
     >
       Jump to turns {{ turnIndices.join(', ') }} →
     </p>

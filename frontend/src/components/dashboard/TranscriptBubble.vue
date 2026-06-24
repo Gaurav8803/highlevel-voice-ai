@@ -14,8 +14,8 @@ const props = defineProps({
 defineEmits(['select'])
 
 const ROLE_META = {
-  agent: { icon: Bot, label: 'Agent', chip: 'bg-indigo-100 text-indigo-700' },
-  user: { icon: User, label: 'Caller', chip: 'bg-zinc-200 text-zinc-700' },
+  agent: { icon: Bot, label: 'Agent', chip: 'bg-blue-100 text-blue-700' },
+  user: { icon: User, label: 'Caller', chip: 'bg-slate-200 text-slate-700' },
   action: { icon: Wrench, label: 'Action', chip: 'bg-sky-100 text-sky-700' },
 }
 

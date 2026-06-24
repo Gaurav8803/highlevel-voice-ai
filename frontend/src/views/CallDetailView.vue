@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Database, FileText, Lightbulb, RefreshCw, TriangleAlert, Wrench } from '@lucide/vue'
 
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import { useCall } from '@/composables/useCall.js'
 import { formatDateTime, formatDuration, humanizeCategory } from '@/utils/formatters.js'
 
 const route = useRoute()
+const router = useRouter()
 const callId = computed(() => route.params.id)
 const { call, isLoading, isError, error, evaluate, evaluating } = useCall(callId)
 
@@ -68,6 +69,17 @@ function onTurnSelect(index) {
 
 function getSharedQuery() {
   return isEmbedded.value ? { ...route.query, embedded: 'true' } : route.query
+}
+
+function openAgent() {
+  if (!detail.value?.call?.agentId) {
+    return
+  }
+
+  router.push({
+    path: `/agents/${detail.value.call.agentId}`,
+    query: getSharedQuery(),
+  })
 }
 
 watch(activeTurnIndices, async (indices) => {
@@ -138,9 +150,18 @@ watch(callId, () => {
               <p class="text-sm font-medium text-muted-foreground">
                 {{ detail.agent.businessName || 'Unknown business' }}
               </p>
-              <h1 class="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-                {{ detail.agent.agentName || 'Voice AI call' }}
-              </h1>
+              <div class="mt-1 flex flex-wrap items-center gap-3">
+                <h1 class="text-2xl font-semibold tracking-tight text-foreground">
+                  {{ detail.agent.agentName || 'Voice AI call' }}
+                </h1>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="openAgent"
+                >
+                  Go to Agent
+                </Button>
+              </div>
               <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                 <span>{{ formatDateTime(detail.call.calledAt) }}</span>
                 <span>{{ formatDuration(detail.call.duration) }}</span>

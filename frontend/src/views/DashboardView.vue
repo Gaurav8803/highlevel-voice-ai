@@ -9,7 +9,6 @@ import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import KpiCard from '@/components/common/KpiCard.vue'
 import ScoreBadge from '@/components/common/ScoreBadge.vue'
-import TrendIndicator from '@/components/common/TrendIndicator.vue'
 import { useDashboard } from '@/composables/useDashboard.js'
 import { formatDateTime, formatDuration, formatScore } from '@/utils/formatters.js'
 
@@ -41,7 +40,6 @@ const scoreTone = computed(() => {
 const agentColumns = [
   { accessorKey: 'agentName', header: 'Agent' },
   { accessorKey: 'averageScore', header: 'Avg score' },
-  { accessorKey: 'trend', header: 'Trend' },
   { accessorKey: 'callCount', header: 'Calls' },
   { accessorKey: 'evaluatedCount', header: 'Evaluated' },
   { accessorKey: 'topIssue', header: 'Top issue', enableSorting: false },
@@ -199,9 +197,6 @@ function openCall(call) {
               size="sm"
             />
           </template>
-          <template #cell-trend="{ item }">
-            <TrendIndicator :trend="item.trend" />
-          </template>
           <template #cell-evaluatedCount="{ item }">
             <span class="tabular-nums text-muted-foreground">{{ item.evaluatedCount }}</span>
           </template>
@@ -224,18 +219,23 @@ function openCall(call) {
       >
         <div>
           <h2 class="text-base font-semibold text-foreground">
-            Recent evaluations
+            Call log history
           </h2>
           <p class="text-sm text-muted-foreground">
-            Latest scored calls and the top finding that surfaced.
+            All synced calls, newest first. Search or paginate to review the full call history.
+          </p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            Showing {{ data.recentCalls?.length || 0 }} synced calls.
           </p>
         </div>
         <DataTable
           :columns="callColumns"
           :data="data.recentCalls"
           :page-size="8"
+          searchable
+          search-placeholder="Search call logs…"
           row-clickable
-          empty-text="No recent evaluations yet."
+          empty-text="No calls synced yet."
           @row-click="openCall"
         >
           <template #cell-agentName="{ item }">

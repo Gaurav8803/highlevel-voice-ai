@@ -13,7 +13,7 @@ const ACTION_META = {
   script_training: {
     icon: MessageSquareText,
     label: 'Script training',
-    tone: 'bg-violet-100 text-violet-700 ring-violet-600/20',
+    tone: 'bg-blue-100 text-blue-700 ring-blue-600/20',
   },
   workflow_fix: {
     icon: Wrench,

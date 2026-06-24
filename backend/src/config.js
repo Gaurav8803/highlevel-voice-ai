@@ -23,6 +23,15 @@ const envSchema = {
     GHL_LOCATION_ID: {
       type: 'string',
     },
+    GHL_CLIENT_ID: {
+      type: 'string',
+    },
+    GHL_CLIENT_SECRET: {
+      type: 'string',
+    },
+    GHL_REDIRECT_URI: {
+      type: 'string',
+    },
     GHL_API_VERSION: {
       type: 'string',
       default: '2021-07-28',

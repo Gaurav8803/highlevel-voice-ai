@@ -8,7 +8,7 @@ const props = defineProps({
   points: { type: Array, default: () => [] },
 })
 
-const CHART_COLOR = '#6366f1'
+const CHART_COLOR = '#2563eb'
 const Y_TICKS = [0, 20, 40, 60, 80, 100]
 
 const data = computed(() => props.points.map((point, index) => ({

@@ -1,0 +1,1026 @@
+{
+  "data": {
+    "id": "cmqqjx0x5000jjlgtj1kt2o97",
+    "callLogId": "cmqqjtdmi0009jlgtbxlk2qt5",
+    "agentId": "cmqoz9bdd0003jlwqr5qibj5k",
+    "callPath": "Candidate (experienced Java full-stack engineer, 8+ years) completed greeting, name capture, self-introduction, and project deep-dive. Agent skipped the formal technical round transition and went directly to availability and motivation checks, then announced the start of the technical round. Candidate requested to pause the call before technical questions began, and the agent gracefully ended the call.",
+    "deterministicResults": {},
+    "semanticResults": {
+      "callPath": "Candidate (experienced Java full-stack engineer, 8+ years) completed greeting, name capture, self-introduction, and project deep-dive. Agent skipped the formal technical round transition and went directly to availability and motivation checks, then announced the start of the technical round. Candidate requested to pause the call before technical questions began, and the agent gracefully ended the call.",
+      "outOfScopeItems": [
+        {
+          "label": "Candidate Rejected for Notice Period Exceeding 30 Days",
+          "reason": "Candidate confirmed availability within 2 weeks (within 30 days), so the notice period rejection path was not triggered.",
+          "rubricItemId": "notice_period_rejection"
+        },
+        {
+          "label": "HR Round Initiated for Selected Candidates",
+          "reason": "Call ended before the technical round began; no selection was made and the HR round was never reached.",
+          "rubricItemId": "hr_round_transition_for_selected"
+        },
+        {
+          "label": "HR Round Covers Soft Skills and Scenario-Based Questions",
+          "reason": "HR round was never reached as the call ended before technical questions were asked.",
+          "rubricItemId": "hr_round_soft_skills_questions"
+        },
+        {
+          "label": "Uninterested Candidate Redirected Before Final HR Rejection",
+          "reason": "HR round was never reached.",
+          "rubricItemId": "hr_uninterested_candidate_handling"
+        },
+        {
+          "label": "Salary Range Communicated to Fresher Candidates in HR Round",
+          "reason": "Candidate is experienced (8+ years), and the HR round was never reached.",
+          "rubricItemId": "salary_discussion_fresher"
+        },
+        {
+          "label": "Previous and Expected Salary Collected for Experienced Candidates",
+          "reason": "HR round was never reached; salary discussion did not occur.",
+          "rubricItemId": "salary_negotiation_experienced"
+        },
+        {
+          "label": "Salary Negotiation Attempted Before Rejection",
+          "reason": "No salary disagreement or salary discussion took place.",
+          "rubricItemId": "salary_negotiation_attempt"
+        },
+        {
+          "label": "Interview Conducted in Candidate's Chosen Language",
+          "reason": "The entire conversation was conducted in English with no non-English responses from the candidate.",
+          "rubricItemId": "language_adaptation"
+        },
+        {
+          "label": "Policy Questions Deflected to Human HR Team",
+          "reason": "No policy questions were raised by the candidate during this call.",
+          "rubricItemId": "policies_deflection_to_hr"
+        },
+        {
+          "label": "Brief Feedback Provided When Rejected Candidate Requests It",
+          "reason": "No rejection was announced; candidate requested to pause and the call ended without a decision.",
+          "rubricItemId": "feedback_on_request_post_rejection"
+        }
+      ],
+      "emergentFindings": [
+        {
+          "id": "emergent_1",
+          "label": "Screening-to-Technical Flow Sequence Inverted",
+          "status": "failed",
+          "category": "goal_completion",
+          "evidence": {
+            "quotes": [
+              "Are you available to join within thirty days, or do you have a notice period?",
+              "Why do you want to join this company?",
+              "Okay great, we are now starting with your technical interview then. Are you ready?"
+            ],
+            "reasoning": "The agent performed availability check and motivation question (turns 15–20) before announcing the technical round (turn 21). These are post-technical-round gates and were executed in the wrong phase of the interview, disrupting the intended flow entirely.",
+            "turnIndices": [
+              15,
+              17,
+              21
+            ]
+          },
+          "severity": "high",
+          "recommendation": "Restructure the agent's state machine so the flow enforces: (1) Screening round — name, intro, experience/projects, (2) Technical round — adaptive questions, (3) Post-technical gates — availability, motivation, (4) Decision announcement. The current prompt allows availability and motivation questions to fire prematurely, before technical questions begin.",
+          "evidenceStrength": "strong"
+        },
+        {
+          "id": "emergent_2",
+          "label": "No Rescheduling or Incomplete Status Handling Path",
+          "status": "failed",
+          "category": "goal_completion",
+          "evidence": {
+            "quotes": [
+              "Can we close it for now? I'm a little busy.",
+              "No problem, we can pause here. Thank you for your time, Sharma. If you wish to continue the interview later, just let us know. Have a great day!"
+            ],
+            "reasoning": "The agent accepted the candidate's request to pause without clarifying whether this would be rescheduled or treated as an incomplete/withdrawn application. No mechanism for follow-up or rescheduling was established.",
+            "turnIndices": [
+              22,
+              23
+            ]
+          },
+          "severity": "medium",
+          "recommendation": "Add a pause/reschedule handling script: when a candidate requests to stop mid-interview, the agent should ask 'Would you like to reschedule this interview?' and if yes, note their preferred time or inform them someone will follow up. Also trigger a CRM update marking the interview as 'paused/incomplete'.",
+          "evidenceStrength": "medium"
+        }
+      ],
+      "overallAssessment": "The agent handled individual conversation elements professionally — project deep-dives were thorough, neutral acknowledgments were maintained, and no scoring criteria were revealed. However, the most critical structural failure is that availability and motivation checks (post-technical-round gates) were executed during the screening phase, before the technical round began, inverting the intended interview flow. The call ended without a technical round or final decision due to the candidate requesting a pause, and no rescheduling path or incomplete status update was triggered.",
+      "topRecommendations": [
+        {
+          "title": "Enforce Strict Phase-Sequential Interview Flow",
+          "priority": 1,
+          "impactArea": "goal_completion",
+          "description": "The availability check (turn 15) and motivation question (turn 17) fired during the screening phase, before any technical questions were asked. This completely inverts the intended interview architecture and means the candidate passed pre-decision gates without ever being technically evaluated.",
+          "promptPatch": "IMPORTANT: The interview must follow this strict sequence:\n1. SCREENING ROUND: Collect name → self-introduction → project/experience deep-dive → communication self-rating.\n2. TECHNICAL ROUND: Announce transition, confirm readiness, ask adaptive technical questions (5–15).\n3. POST-TECHNICAL GATES (only after technical round completes): Ask availability/notice period → Ask motivation question.\n4. DECISION: Announce selection or rejection.\n5. HR ROUND (if selected): Transition and begin HR questions.\n\nDo NOT ask availability or motivation questions before the technical round begins.",
+          "suggestedChange": "Enforce a hard sequential gate in the prompt/state machine so that availability and motivation questions cannot trigger before the technical round's question quota is completed.",
+          "actionAdjustment": "Implement a strict sequential state machine with named phases: SCREENING → TECHNICAL → POST_TECHNICAL_GATES (availability, motivation) → DECISION → HR_ROUND. Each phase must complete before the next can begin. Availability and motivation questions must be gated to fire only after the technical round's question quota is exhausted.",
+          "relatedRubricItems": [
+            "technical_transition_announcement",
+            "availability_check_before_decision",
+            "motivation_question_asked",
+            "question_count_adaptive"
+          ]
+        },
+        {
+          "title": "Add Rescheduling and Incomplete Status Handling",
+          "priority": 2,
+          "impactArea": "conversion",
+          "description": "When the candidate asked to pause (turn 22), the agent gracefully accepted but did not offer rescheduling, establish next steps, or update the interview status in the CRM. This leaves the candidate in limbo with no follow-up mechanism.",
+          "promptPatch": "If the candidate requests to pause, stop, or end the interview before it is complete, respond with:\n'Of course, no problem. Would you like to reschedule this interview for a later time? If so, someone from our team will reach out to arrange a suitable time.'\nThen update the contact.interview_result field to 'incomplete' and note the candidate's preference.",
+          "suggestedChange": "Add a mid-interview pause/reschedule handling path with a CRM status update to 'incomplete'.",
+          "actionAdjustment": "Add a 'pause/reschedule' handler action: when candidate requests to end early, agent asks if they want to reschedule, captures preference, and triggers a CRM update with status='incomplete' and a reschedule flag.",
+          "relatedRubricItems": [
+            "contact_interview_result_updated",
+            "clear_final_decision_announced"
+          ]
+        },
+        {
+          "title": "Add Stage Overview to Opening Greeting",
+          "priority": 3,
+          "impactArea": "communication",
+          "description": "The opening message confirmed readiness but did not explain the two-stage structure (screening → technical → final decision). Candidates are more cooperative and less likely to drop off mid-interview when they understand the process upfront.",
+          "promptPatch": "Replace the current opening with:\n'Hello, this is the AI Interview Assistant representing [Company Name]. I'll be conducting your interview today. We'll go through three stages: first, a brief screening round with a few background questions; then a technical round with role-specific questions; and finally, I'll give you a clear decision at the end. This should take about 20–30 minutes. Are you ready to begin?'",
+          "suggestedChange": "Update the greeting script to always include a brief overview of the three interview stages before the first screening question.",
+          "actionAdjustment": null,
+          "relatedRubricItems": [
+            "greeting_and_intro"
+          ]
+        },
+        {
+          "title": "Fix CRM Field Update Triggers for Name and Interview Result",
+          "priority": 4,
+          "impactArea": "data_capture",
+          "description": "The action log at turn 24 shows no recorded field updates. contact.first_name should have been updated after turn 3, and contact.interview_result should be updated to reflect the incomplete/paused status at call end.",
+          "promptPatch": null,
+          "suggestedChange": "Ensure CRM field updates fire at the correct event triggers: first_name at name capture, interview_result at decision or call end (with 'incomplete' as a valid value).",
+          "actionAdjustment": "Verify that the contact.first_name CRM update action fires at the moment the candidate confirms their name (turn 3), not at call end. Check action log configuration to ensure this is not deferred. Also configure a separate action to update contact.interview_result to 'incomplete' when the call ends without a decision.",
+          "relatedRubricItems": [
+            "contact_first_name_updated",
+            "contact_interview_result_updated"
+          ]
+        }
+      ],
+      "evaluatedRubricItems": [
+        {
+          "label": "Professional Introduction and Stage Overview",
+          "status": "failed",
+          "category": "communication",
+          "evidence": {
+            "quotes": [
+              "Hello, this is the AI Interview Assistant. I'll be conducting your  interview today. Are you ready?"
+            ],
+            "reasoning": "The agent introduces itself and confirms readiness but never explains the two-stage interview structure (basic screening → technical questions → final decision). A structural overview was not provided before the first question.",
+            "turnIndices": [
+              0
+            ]
+          },
+          "severity": "high",
+          "rubricItemId": "greeting_and_intro",
+          "recommendation": "Update the opening prompt to always include a brief structural overview: 'We will start with a few basic screening questions, followed by a technical round, and I will give you a decision at the end.' This must appear before any substantive questions.",
+          "evidenceStrength": "medium"
+        },
+        {
+          "label": "Candidate Full Name Captured",
+          "status": "passed",
+          "category": "data_capture",
+          "evidence": {
+            "quotes": [
+              "Can I have your full name?",
+              "Got it, Sharma."
+            ],
+            "reasoning": "The agent explicitly asked for the full name and the candidate provided 'Sharma'. Name was captured successfully.",
+            "turnIndices": [
+              2,
+              3
+            ]
+          },
+          "severity": "high",
+          "rubricItemId": "candidate_name_captured",
+          "recommendation": null,
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Contact First Name Field Updated After Name Collection",
+          "status": "uncertain",
+          "category": "data_capture",
+          "evidence": {
+            "quotes": [
+              "Got it, Sharma."
+            ],
+            "reasoning": "The candidate provided the name 'Sharma' and the agent used it throughout the call. However, no action log entry (turn 24) confirms the contact.first_name field was actually updated; the action log at turn 24 is empty/unresolved.",
+            "turnIndices": [
+              3,
+              24
+            ]
+          },
+          "severity": "high",
+          "rubricItemId": "contact_first_name_updated",
+          "recommendation": "Verify that the field-update action fires immediately after name confirmation. The action log at turn 24 shows no recorded field update. Ensure the CRM update action is triggered at name-capture, not deferred to call end.",
+          "evidenceStrength": "weak"
+        },
+        {
+          "label": "Brief Self-Introduction Collected",
+          "status": "passed",
+          "category": "data_capture",
+          "evidence": {
+            "quotes": [
+              "Please introduce yourself briefly.",
+              "I am a senior software engineer with eight plus years of in Java full stack engineering."
+            ],
+            "reasoning": "Agent asked for a brief self-introduction without numbering the question, and the candidate completed their answer before the agent responded.",
+            "turnIndices": [
+              4,
+              5
+            ]
+          },
+          "severity": "medium",
+          "rubricItemId": "self_introduction_collected",
+          "recommendation": null,
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Experience Question Skipped Appropriately for Freshers",
+          "status": "passed",
+          "category": "communication",
+          "evidence": {
+            "quotes": [
+              "I am a senior software engineer with eight plus years of in Java full stack engineering.",
+              "Could you tell me about the projects you've worked on recently? Please explain your role and the technologies you used."
+            ],
+            "reasoning": "The candidate clearly stated 8+ years of experience in their introduction. The agent correctly did not re-ask about years of experience and moved on to project questions.",
+            "turnIndices": [
+              5,
+              6
+            ]
+          },
+          "severity": "medium",
+          "rubricItemId": "experience_question_adaptive",
+          "recommendation": null,
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Project Deep-Dive Questions Asked for Experienced Candidates",
+          "status": "passed",
+          "category": "communication",
+          "evidence": {
+            "quotes": [
+              "Could you tell me about the projects you've worked on recently? Please explain your role and the technologies you used.",
+              "What did you specifically contribute to these AI-first products? Could you explain your main responsibilities and the technologies you used?"
+            ],
+            "reasoning": "The agent asked for project details and then followed up with a deeper question about the AI-first products after receiving a brief mention. This demonstrates appropriate cross-questioning.",
+            "turnIndices": [
+              6,
+              11
+            ]
+          },
+          "severity": "high",
+          "rubricItemId": "project_deep_dive_experienced",
+          "recommendation": null,
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Question Numbers Not Spoken Aloud",
+          "status": "passed",
+          "category": "communication",
+          "evidence": {
+            "quotes": [
+              "Alright, thanks for sharing that.",
+              "Got it. Sounds like you handled both the architecture and implementation."
+            ],
+            "reasoning": "No question numbers were spoken at any point during the conversation.",
+            "turnIndices": [
+              6,
+              11,
+              13
+            ]
+          },
+          "severity": "medium",
+          "rubricItemId": "no_question_numbers_spoken",
+          "recommendation": null,
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Smooth Transition Announcement Before Technical Round",
+          "status": "partially_met",
+          "category": "communication",
+          "evidence": {
+            "quotes": [
+              "Okay great, we are now starting with your technical interview then. Are you ready?",
+              "Moving on, how would you rate your communication skills, especially when working with cross-functional teams or clients?"
+            ],
+            "reasoning": "The agent asked about availability (turn 15) and motivation (turn 17) before announcing the technical round start (turn 21). While a readiness check was included at the correct transition point, the sequence was inverted — availability and motivation checks occurred before the technical round even began, which is not the intended flow.",
+            "turnIndices": [
+              15,
+              17,
+              21
+            ]
+          },
+          "severity": "medium",
+          "rubricItemId": "technical_transition_announcement",
+          "recommendation": "The transition announcement at turn 21 was correctly worded, but it came after availability and motivation questions which are supposed to occur at the end of the technical round. Restructure the flow so the technical transition fires immediately after the screening round, before availability and motivation checks.",
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Adaptive Question Count Based on Running Performance",
+          "status": "uncertain",
+          "category": "goal_completion",
+          "evidence": {
+            "quotes": [
+              "Okay great, we are now starting with your technical interview then. Are you ready?",
+              "Can we close it for now? I'm a little busy."
+            ],
+            "reasoning": "The technical round was announced but the candidate requested to pause before any technical questions were asked. Zero technical questions were asked. The call ended without a technical round occurring.",
+            "turnIndices": [
+              21,
+              22
+            ]
+          },
+          "severity": "high",
+          "rubricItemId": "question_count_adaptive",
+          "recommendation": null,
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "No Correct/Incorrect Feedback Given During Technical Round",
+          "status": "passed",
+          "category": "communication",
+          "evidence": {
+            "quotes": [
+              "Alright.",
+              "Got it.",
+              "Okay great"
+            ],
+            "reasoning": "The agent used neutral acknowledgments throughout. No correct/incorrect feedback was given at any point.",
+            "turnIndices": [
+              6,
+              11,
+              13,
+              21
+            ]
+          },
+          "severity": "high",
+          "rubricItemId": "no_answer_feedback_given",
+          "recommendation": null,
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Availability Within 30 Days Checked Before Final Decision",
+          "status": "partially_met",
+          "category": "data_capture",
+          "evidence": {
+            "quotes": [
+              "Are you available to join within thirty days, or do you have a notice period?",
+              "Yes. I can join in two weeks."
+            ],
+            "reasoning": "The agent asked about availability and the candidate confirmed two weeks. However, this question was asked during the screening/project discussion phase (turn 15), not after the technical round concluded — which is the prescribed timing.",
+            "turnIndices": [
+              15,
+              16
+            ]
+          },
+          "severity": "critical",
+          "rubricItemId": "availability_check_before_decision",
+          "recommendation": "The availability check occurred too early — before the technical round rather than at its conclusion. While the question was asked, the trigger should be gated to the post-technical-round phase. Reorder the flow to: technical round → availability check → motivation question → decision.",
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Motivation Question Asked Before Final Decision",
+          "status": "partially_met",
+          "category": "data_capture",
+          "evidence": {
+            "quotes": [
+              "Why do you want to join this company?",
+              "Because the overall growth and the project and the products which they are building they're working on."
+            ],
+            "reasoning": "The motivation question was asked at turn 17 and the candidate provided a response. However, this occurred before the technical round began (announced at turn 21), not after it concluded as intended.",
+            "turnIndices": [
+              17,
+              18
+            ]
+          },
+          "severity": "high",
+          "rubricItemId": "motivation_question_asked",
+          "recommendation": "The motivation question was misplaced in the flow — it appeared before the technical round rather than after. Ensure the motivation question is triggered only after the technical round questions are complete and the availability gate has passed.",
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Scoring Criteria and Score Counts Not Revealed to Candidate",
+          "status": "passed",
+          "category": "compliance",
+          "evidence": {
+            "quotes": [
+              "Alright.",
+              "Got it.",
+              "Okay great"
+            ],
+            "reasoning": "No scoring percentages, thresholds, or correct/incorrect counts were mentioned at any point in the call.",
+            "turnIndices": [
+              6,
+              11,
+              13,
+              21
+            ]
+          },
+          "severity": "high",
+          "rubricItemId": "scoring_criteria_not_revealed",
+          "recommendation": null,
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Clear and Unambiguous Final Decision Announced",
+          "status": "uncertain",
+          "category": "goal_completion",
+          "evidence": {
+            "quotes": [
+              "No problem, we can pause here. Thank you for your time, Sharma. If you wish to continue the interview later, just let us know. Have a great day!"
+            ],
+            "reasoning": "The call ended with the candidate requesting a pause before the technical round. No final decision (selection or rejection) was announced. The interview was incomplete.",
+            "turnIndices": [
+              22,
+              23
+            ]
+          },
+          "severity": "critical",
+          "rubricItemId": "clear_final_decision_announced",
+          "recommendation": "The call ended without a decision, which is acceptable given the candidate requested to pause. However, the agent should confirm whether this is a reschedule or termination and ideally note the incomplete status explicitly. Consider adding a reschedule/incomplete handling path.",
+          "evidenceStrength": "strong"
+        },
+        {
+          "label": "Contact Interview Result Field Updated After Decision",
+          "status": "uncertain",
+          "category": "data_capture",
+          "evidence": {
+            "quotes": [
+              "No problem, we can pause here."
+            ],
+            "reasoning": "No final decision was reached, so the interview_result field update is not strictly required. The action log at turn 24 shows no field update, which is expected for an incomplete/paused call.",
+            "turnIndices": [
+              23,
+              24
+            ]
+          },
+          "severity": "critical",
+          "rubricItemId": "contact_interview_result_updated",
+          "recommendation": "While no decision was made, consider updating the interview_result field to 'incomplete' or 'paused' so the CRM reflects the call status accurately.",
+          "evidenceStrength": "weak"
+        },
+        {
+          "label": "Agent Does Not Say Thank You After Each Candidate Response",
+          "status": "partially_met",
+          "category": "communication",
+          "evidence": {
+            "quotes": [
+              "Thank you, Sharma. Please introduce yourself briefly.",
+              "Alright, thanks for sharing that.",
+              "Thank you for your time, Sharma."
+            ],
+            "reasoning": "The agent said 'Thank you' after receiving the name (turn 4), after the project explanation (turn 11 implicitly), and as a closing farewell (turn 23). The farewell 'thank you' is contextually appropriate. However, 'Thank you, Sharma' after name capture is a routine response that should be replaced with a neutral acknowledgment.",
+            "turnIndices": [
+              4,
+              23
+            ]
+          },
+          "severity": "low",
+          "rubricItemId": "no_thank_you_after_each_answer",
+          "recommendation": "Replace 'Thank you, Sharma' at turn 4 with a neutral acknowledgment like 'Great, Sharma' or 'Got it, Sharma.' The closing thank-you at turn 23 is appropriate and should remain.",
+          "evidenceStrength": "strong"
+        }
+      ],
+      "invalidRubricItemCount": 0,
+      "invalidOutOfScopeItemCount": 0,
+      "rejectedEvaluatedItemCount": 0,
+      "rejectedEmergentFindingCount": 0
+    },
+    "findings": [
+      {
+        "type": "rubric_item",
+        "label": "Professional Introduction and Stage Overview",
+        "passed": false,
+        "source": "llm_semantic",
+        "status": "failed",
+        "category": "communication",
+        "evidence": {
+          "quotes": [
+            "Hello, this is the AI Interview Assistant. I'll be conducting your  interview today. Are you ready?"
+          ],
+          "reasoning": "The agent introduces itself and confirms readiness but never explains the two-stage interview structure (basic screening → technical questions → final decision). A structural overview was not provided before the first question.",
+          "turnIndices": [
+            0
+          ]
+        },
+        "severity": "high",
+        "rubricItemId": "greeting_and_intro",
+        "recommendation": "Update the opening prompt to always include a brief structural overview: 'We will start with a few basic screening questions, followed by a technical round, and I will give you a decision at the end.' This must appear before any substantive questions.",
+        "evidenceStrength": "medium"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Candidate Full Name Captured",
+        "passed": true,
+        "source": "llm_semantic",
+        "status": "passed",
+        "category": "data_capture",
+        "evidence": {
+          "quotes": [
+            "Can I have your full name?",
+            "Got it, Sharma."
+          ],
+          "reasoning": "The agent explicitly asked for the full name and the candidate provided 'Sharma'. Name was captured successfully.",
+          "turnIndices": [
+            2,
+            3
+          ]
+        },
+        "severity": "high",
+        "rubricItemId": "candidate_name_captured",
+        "recommendation": null,
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Contact First Name Field Updated After Name Collection",
+        "passed": null,
+        "source": "llm_semantic",
+        "status": "uncertain",
+        "category": "data_capture",
+        "evidence": {
+          "quotes": [
+            "Got it, Sharma."
+          ],
+          "reasoning": "The candidate provided the name 'Sharma' and the agent used it throughout the call. However, no action log entry (turn 24) confirms the contact.first_name field was actually updated; the action log at turn 24 is empty/unresolved.",
+          "turnIndices": [
+            3,
+            24
+          ]
+        },
+        "severity": "high",
+        "rubricItemId": "contact_first_name_updated",
+        "recommendation": "Verify that the field-update action fires immediately after name confirmation. The action log at turn 24 shows no recorded field update. Ensure the CRM update action is triggered at name-capture, not deferred to call end.",
+        "evidenceStrength": "weak"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Brief Self-Introduction Collected",
+        "passed": true,
+        "source": "llm_semantic",
+        "status": "passed",
+        "category": "data_capture",
+        "evidence": {
+          "quotes": [
+            "Please introduce yourself briefly.",
+            "I am a senior software engineer with eight plus years of in Java full stack engineering."
+          ],
+          "reasoning": "Agent asked for a brief self-introduction without numbering the question, and the candidate completed their answer before the agent responded.",
+          "turnIndices": [
+            4,
+            5
+          ]
+        },
+        "severity": "medium",
+        "rubricItemId": "self_introduction_collected",
+        "recommendation": null,
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Experience Question Skipped Appropriately for Freshers",
+        "passed": true,
+        "source": "llm_semantic",
+        "status": "passed",
+        "category": "communication",
+        "evidence": {
+          "quotes": [
+            "I am a senior software engineer with eight plus years of in Java full stack engineering.",
+            "Could you tell me about the projects you've worked on recently? Please explain your role and the technologies you used."
+          ],
+          "reasoning": "The candidate clearly stated 8+ years of experience in their introduction. The agent correctly did not re-ask about years of experience and moved on to project questions.",
+          "turnIndices": [
+            5,
+            6
+          ]
+        },
+        "severity": "medium",
+        "rubricItemId": "experience_question_adaptive",
+        "recommendation": null,
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Project Deep-Dive Questions Asked for Experienced Candidates",
+        "passed": true,
+        "source": "llm_semantic",
+        "status": "passed",
+        "category": "communication",
+        "evidence": {
+          "quotes": [
+            "Could you tell me about the projects you've worked on recently? Please explain your role and the technologies you used.",
+            "What did you specifically contribute to these AI-first products? Could you explain your main responsibilities and the technologies you used?"
+          ],
+          "reasoning": "The agent asked for project details and then followed up with a deeper question about the AI-first products after receiving a brief mention. This demonstrates appropriate cross-questioning.",
+          "turnIndices": [
+            6,
+            11
+          ]
+        },
+        "severity": "high",
+        "rubricItemId": "project_deep_dive_experienced",
+        "recommendation": null,
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Question Numbers Not Spoken Aloud",
+        "passed": true,
+        "source": "llm_semantic",
+        "status": "passed",
+        "category": "communication",
+        "evidence": {
+          "quotes": [
+            "Alright, thanks for sharing that.",
+            "Got it. Sounds like you handled both the architecture and implementation."
+          ],
+          "reasoning": "No question numbers were spoken at any point during the conversation.",
+          "turnIndices": [
+            6,
+            11,
+            13
+          ]
+        },
+        "severity": "medium",
+        "rubricItemId": "no_question_numbers_spoken",
+        "recommendation": null,
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Smooth Transition Announcement Before Technical Round",
+        "passed": false,
+        "source": "llm_semantic",
+        "status": "partially_met",
+        "category": "communication",
+        "evidence": {
+          "quotes": [
+            "Okay great, we are now starting with your technical interview then. Are you ready?",
+            "Moving on, how would you rate your communication skills, especially when working with cross-functional teams or clients?"
+          ],
+          "reasoning": "The agent asked about availability (turn 15) and motivation (turn 17) before announcing the technical round start (turn 21). While a readiness check was included at the correct transition point, the sequence was inverted — availability and motivation checks occurred before the technical round even began, which is not the intended flow.",
+          "turnIndices": [
+            15,
+            17,
+            21
+          ]
+        },
+        "severity": "medium",
+        "rubricItemId": "technical_transition_announcement",
+        "recommendation": "The transition announcement at turn 21 was correctly worded, but it came after availability and motivation questions which are supposed to occur at the end of the technical round. Restructure the flow so the technical transition fires immediately after the screening round, before availability and motivation checks.",
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Adaptive Question Count Based on Running Performance",
+        "passed": null,
+        "source": "llm_semantic",
+        "status": "uncertain",
+        "category": "goal_completion",
+        "evidence": {
+          "quotes": [
+            "Okay great, we are now starting with your technical interview then. Are you ready?",
+            "Can we close it for now? I'm a little busy."
+          ],
+          "reasoning": "The technical round was announced but the candidate requested to pause before any technical questions were asked. Zero technical questions were asked. The call ended without a technical round occurring.",
+          "turnIndices": [
+            21,
+            22
+          ]
+        },
+        "severity": "high",
+        "rubricItemId": "question_count_adaptive",
+        "recommendation": null,
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "No Correct/Incorrect Feedback Given During Technical Round",
+        "passed": true,
+        "source": "llm_semantic",
+        "status": "passed",
+        "category": "communication",
+        "evidence": {
+          "quotes": [
+            "Alright.",
+            "Got it.",
+            "Okay great"
+          ],
+          "reasoning": "The agent used neutral acknowledgments throughout. No correct/incorrect feedback was given at any point.",
+          "turnIndices": [
+            6,
+            11,
+            13,
+            21
+          ]
+        },
+        "severity": "high",
+        "rubricItemId": "no_answer_feedback_given",
+        "recommendation": null,
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Availability Within 30 Days Checked Before Final Decision",
+        "passed": false,
+        "source": "llm_semantic",
+        "status": "partially_met",
+        "category": "data_capture",
+        "evidence": {
+          "quotes": [
+            "Are you available to join within thirty days, or do you have a notice period?",
+            "Yes. I can join in two weeks."
+          ],
+          "reasoning": "The agent asked about availability and the candidate confirmed two weeks. However, this question was asked during the screening/project discussion phase (turn 15), not after the technical round concluded — which is the prescribed timing.",
+          "turnIndices": [
+            15,
+            16
+          ]
+        },
+        "severity": "critical",
+        "rubricItemId": "availability_check_before_decision",
+        "recommendation": "The availability check occurred too early — before the technical round rather than at its conclusion. While the question was asked, the trigger should be gated to the post-technical-round phase. Reorder the flow to: technical round → availability check → motivation question → decision.",
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Motivation Question Asked Before Final Decision",
+        "passed": false,
+        "source": "llm_semantic",
+        "status": "partially_met",
+        "category": "data_capture",
+        "evidence": {
+          "quotes": [
+            "Why do you want to join this company?",
+            "Because the overall growth and the project and the products which they are building they're working on."
+          ],
+          "reasoning": "The motivation question was asked at turn 17 and the candidate provided a response. However, this occurred before the technical round began (announced at turn 21), not after it concluded as intended.",
+          "turnIndices": [
+            17,
+            18
+          ]
+        },
+        "severity": "high",
+        "rubricItemId": "motivation_question_asked",
+        "recommendation": "The motivation question was misplaced in the flow — it appeared before the technical round rather than after. Ensure the motivation question is triggered only after the technical round questions are complete and the availability gate has passed.",
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Scoring Criteria and Score Counts Not Revealed to Candidate",
+        "passed": true,
+        "source": "llm_semantic",
+        "status": "passed",
+        "category": "compliance",
+        "evidence": {
+          "quotes": [
+            "Alright.",
+            "Got it.",
+            "Okay great"
+          ],
+          "reasoning": "No scoring percentages, thresholds, or correct/incorrect counts were mentioned at any point in the call.",
+          "turnIndices": [
+            6,
+            11,
+            13,
+            21
+          ]
+        },
+        "severity": "high",
+        "rubricItemId": "scoring_criteria_not_revealed",
+        "recommendation": null,
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Clear and Unambiguous Final Decision Announced",
+        "passed": null,
+        "source": "llm_semantic",
+        "status": "uncertain",
+        "category": "goal_completion",
+        "evidence": {
+          "quotes": [
+            "No problem, we can pause here. Thank you for your time, Sharma. If you wish to continue the interview later, just let us know. Have a great day!"
+          ],
+          "reasoning": "The call ended with the candidate requesting a pause before the technical round. No final decision (selection or rejection) was announced. The interview was incomplete.",
+          "turnIndices": [
+            22,
+            23
+          ]
+        },
+        "severity": "critical",
+        "rubricItemId": "clear_final_decision_announced",
+        "recommendation": "The call ended without a decision, which is acceptable given the candidate requested to pause. However, the agent should confirm whether this is a reschedule or termination and ideally note the incomplete status explicitly. Consider adding a reschedule/incomplete handling path.",
+        "evidenceStrength": "strong"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Contact Interview Result Field Updated After Decision",
+        "passed": null,
+        "source": "llm_semantic",
+        "status": "uncertain",
+        "category": "data_capture",
+        "evidence": {
+          "quotes": [
+            "No problem, we can pause here."
+          ],
+          "reasoning": "No final decision was reached, so the interview_result field update is not strictly required. The action log at turn 24 shows no field update, which is expected for an incomplete/paused call.",
+          "turnIndices": [
+            23,
+            24
+          ]
+        },
+        "severity": "critical",
+        "rubricItemId": "contact_interview_result_updated",
+        "recommendation": "While no decision was made, consider updating the interview_result field to 'incomplete' or 'paused' so the CRM reflects the call status accurately.",
+        "evidenceStrength": "weak"
+      },
+      {
+        "type": "rubric_item",
+        "label": "Agent Does Not Say Thank You After Each Candidate Response",
+        "passed": false,
+        "source": "llm_semantic",
+        "status": "partially_met",
+        "category": "communication",
+        "evidence": {
+          "quotes": [
+            "Thank you, Sharma. Please introduce yourself briefly.",
+            "Alright, thanks for sharing that.",
+            "Thank you for your time, Sharma."
+          ],
+          "reasoning": "The agent said 'Thank you' after receiving the name (turn 4), after the project explanation (turn 11 implicitly), and as a closing farewell (turn 23). The farewell 'thank you' is contextually appropriate. However, 'Thank you, Sharma' after name capture is a routine response that should be replaced with a neutral acknowledgment.",
+          "turnIndices": [
+            4,
+            23
+          ]
+        },
+        "severity": "low",
+        "rubricItemId": "no_thank_you_after_each_answer",
+        "recommendation": "Replace 'Thank you, Sharma' at turn 4 with a neutral acknowledgment like 'Great, Sharma' or 'Got it, Sharma.' The closing thank-you at turn 23 is appropriate and should remain.",
+        "evidenceStrength": "strong"
+      },
+      {
+        "id": "emergent_1",
+        "type": "emergent",
+        "label": "Screening-to-Technical Flow Sequence Inverted",
+        "passed": false,
+        "source": "llm_semantic",
+        "status": "failed",
+        "category": "goal_completion",
+        "evidence": {
+          "quotes": [
+            "Are you available to join within thirty days, or do you have a notice period?",
+            "Why do you want to join this company?",
+            "Okay great, we are now starting with your technical interview then. Are you ready?"
+          ],
+          "reasoning": "The agent performed availability check and motivation question (turns 15–20) before announcing the technical round (turn 21). These are post-technical-round gates and were executed in the wrong phase of the interview, disrupting the intended flow entirely.",
+          "turnIndices": [
+            15,
+            17,
+            21
+          ]
+        },
+        "severity": "high",
+        "recommendation": "Restructure the agent's state machine so the flow enforces: (1) Screening round — name, intro, experience/projects, (2) Technical round — adaptive questions, (3) Post-technical gates — availability, motivation, (4) Decision announcement. The current prompt allows availability and motivation questions to fire prematurely, before technical questions begin.",
+        "evidenceStrength": "strong"
+      },
+      {
+        "id": "emergent_2",
+        "type": "emergent",
+        "label": "No Rescheduling or Incomplete Status Handling Path",
+        "passed": false,
+        "source": "llm_semantic",
+        "status": "failed",
+        "category": "goal_completion",
+        "evidence": {
+          "quotes": [
+            "Can we close it for now? I'm a little busy.",
+            "No problem, we can pause here. Thank you for your time, Sharma. If you wish to continue the interview later, just let us know. Have a great day!"
+          ],
+          "reasoning": "The agent accepted the candidate's request to pause without clarifying whether this would be rescheduled or treated as an incomplete/withdrawn application. No mechanism for follow-up or rescheduling was established.",
+          "turnIndices": [
+            22,
+            23
+          ]
+        },
+        "severity": "medium",
+        "recommendation": "Add a pause/reschedule handling script: when a candidate requests to stop mid-interview, the agent should ask 'Would you like to reschedule this interview?' and if yes, note their preferred time or inform them someone will follow up. Also trigger a CRM update marking the interview as 'paused/incomplete'.",
+        "evidenceStrength": "medium"
+      }
+    ],
+    "outOfScopeItems": [
+      {
+        "label": "Candidate Rejected for Notice Period Exceeding 30 Days",
+        "reason": "Candidate confirmed availability within 2 weeks (within 30 days), so the notice period rejection path was not triggered.",
+        "rubricItemId": "notice_period_rejection"
+      },
+      {
+        "label": "HR Round Initiated for Selected Candidates",
+        "reason": "Call ended before the technical round began; no selection was made and the HR round was never reached.",
+        "rubricItemId": "hr_round_transition_for_selected"
+      },
+      {
+        "label": "HR Round Covers Soft Skills and Scenario-Based Questions",
+        "reason": "HR round was never reached as the call ended before technical questions were asked.",
+        "rubricItemId": "hr_round_soft_skills_questions"
+      },
+      {
+        "label": "Uninterested Candidate Redirected Before Final HR Rejection",
+        "reason": "HR round was never reached.",
+        "rubricItemId": "hr_uninterested_candidate_handling"
+      },
+      {
+        "label": "Salary Range Communicated to Fresher Candidates in HR Round",
+        "reason": "Candidate is experienced (8+ years), and the HR round was never reached.",
+        "rubricItemId": "salary_discussion_fresher"
+      },
+      {
+        "label": "Previous and Expected Salary Collected for Experienced Candidates",
+        "reason": "HR round was never reached; salary discussion did not occur.",
+        "rubricItemId": "salary_negotiation_experienced"
+      },
+      {
+        "label": "Salary Negotiation Attempted Before Rejection",
+        "reason": "No salary disagreement or salary discussion took place.",
+        "rubricItemId": "salary_negotiation_attempt"
+      },
+      {
+        "label": "Interview Conducted in Candidate's Chosen Language",
+        "reason": "The entire conversation was conducted in English with no non-English responses from the candidate.",
+        "rubricItemId": "language_adaptation"
+      },
+      {
+        "label": "Policy Questions Deflected to Human HR Team",
+        "reason": "No policy questions were raised by the candidate during this call.",
+        "rubricItemId": "policies_deflection_to_hr"
+      },
+      {
+        "label": "Brief Feedback Provided When Rejected Candidate Requests It",
+        "reason": "No rejection was announced; candidate requested to pause and the call ended without a decision.",
+        "rubricItemId": "feedback_on_request_post_rejection"
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Enforce Strict Phase-Sequential Interview Flow",
+        "priority": 1,
+        "impactArea": "goal_completion",
+        "description": "The availability check (turn 15) and motivation question (turn 17) fired during the screening phase, before any technical questions were asked. This completely inverts the intended interview architecture and means the candidate passed pre-decision gates without ever being technically evaluated.",
+        "promptPatch": "IMPORTANT: The interview must follow this strict sequence:\n1. SCREENING ROUND: Collect name → self-introduction → project/experience deep-dive → communication self-rating.\n2. TECHNICAL ROUND: Announce transition, confirm readiness, ask adaptive technical questions (5–15).\n3. POST-TECHNICAL GATES (only after technical round completes): Ask availability/notice period → Ask motivation question.\n4. DECISION: Announce selection or rejection.\n5. HR ROUND (if selected): Transition and begin HR questions.\n\nDo NOT ask availability or motivation questions before the technical round begins.",
+        "suggestedChange": "Enforce a hard sequential gate in the prompt/state machine so that availability and motivation questions cannot trigger before the technical round's question quota is completed.",
+        "actionAdjustment": "Implement a strict sequential state machine with named phases: SCREENING → TECHNICAL → POST_TECHNICAL_GATES (availability, motivation) → DECISION → HR_ROUND. Each phase must complete before the next can begin. Availability and motivation questions must be gated to fire only after the technical round's question quota is exhausted.",
+        "relatedRubricItems": [
+          "technical_transition_announcement",
+          "availability_check_before_decision",
+          "motivation_question_asked",
+          "question_count_adaptive"
+        ]
+      },
+      {
+        "title": "Add Rescheduling and Incomplete Status Handling",
+        "priority": 2,
+        "impactArea": "conversion",
+        "description": "When the candidate asked to pause (turn 22), the agent gracefully accepted but did not offer rescheduling, establish next steps, or update the interview status in the CRM. This leaves the candidate in limbo with no follow-up mechanism.",
+        "promptPatch": "If the candidate requests to pause, stop, or end the interview before it is complete, respond with:\n'Of course, no problem. Would you like to reschedule this interview for a later time? If so, someone from our team will reach out to arrange a suitable time.'\nThen update the contact.interview_result field to 'incomplete' and note the candidate's preference.",
+        "suggestedChange": "Add a mid-interview pause/reschedule handling path with a CRM status update to 'incomplete'.",
+        "actionAdjustment": "Add a 'pause/reschedule' handler action: when candidate requests to end early, agent asks if they want to reschedule, captures preference, and triggers a CRM update with status='incomplete' and a reschedule flag.",
+        "relatedRubricItems": [
+          "contact_interview_result_updated",
+          "clear_final_decision_announced"
+        ]
+      },
+      {
+        "title": "Add Stage Overview to Opening Greeting",
+        "priority": 3,
+        "impactArea": "communication",
+        "description": "The opening message confirmed readiness but did not explain the two-stage structure (screening → technical → final decision). Candidates are more cooperative and less likely to drop off mid-interview when they understand the process upfront.",
+        "promptPatch": "Replace the current opening with:\n'Hello, this is the AI Interview Assistant representing [Company Name]. I'll be conducting your interview today. We'll go through three stages: first, a brief screening round with a few background questions; then a technical round with role-specific questions; and finally, I'll give you a clear decision at the end. This should take about 20–30 minutes. Are you ready to begin?'",
+        "suggestedChange": "Update the greeting script to always include a brief overview of the three interview stages before the first screening question.",
+        "actionAdjustment": null,
+        "relatedRubricItems": [
+          "greeting_and_intro"
+        ]
+      },
+      {
+        "title": "Fix CRM Field Update Triggers for Name and Interview Result",
+        "priority": 4,
+        "impactArea": "data_capture",
+        "description": "The action log at turn 24 shows no recorded field updates. contact.first_name should have been updated after turn 3, and contact.interview_result should be updated to reflect the incomplete/paused status at call end.",
+        "promptPatch": null,
+        "suggestedChange": "Ensure CRM field updates fire at the correct event triggers: first_name at name capture, interview_result at decision or call end (with 'incomplete' as a valid value).",
+        "actionAdjustment": "Verify that the contact.first_name CRM update action fires at the moment the candidate confirms their name (turn 3), not at call end. Check action log configuration to ensure this is not deferred. Also configure a separate action to update contact.interview_result to 'incomplete' when the call ends without a decision.",
+        "relatedRubricItems": [
+          "contact_first_name_updated",
+          "contact_interview_result_updated"
+        ]
+      }
+    ],
+    "overallScore": 74.19,
+    "evaluatedAt": "2026-06-24T08:14:54.354Z",
+    "createdAt": "2026-06-23T11:18:44.968Z"
+  }
+}
