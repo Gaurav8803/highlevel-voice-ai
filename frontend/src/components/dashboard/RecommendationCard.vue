@@ -11,6 +11,9 @@ const props = defineProps({
 const relatedRubricItems = computed(() => (Array.isArray(props.recommendation.relatedRubricItems) ? props.recommendation.relatedRubricItems : []))
 const title = computed(() => props.recommendation.title || props.recommendation.label || 'Recommendation')
 const description = computed(() => props.recommendation.description || props.recommendation.recommendation || '')
+const suggestedChange = computed(() => props.recommendation.suggestedChange || '')
+const promptPatch = computed(() => props.recommendation.promptPatch || '')
+const actionAdjustment = computed(() => props.recommendation.actionAdjustment || '')
 </script>
 
 <template>
@@ -53,6 +56,41 @@ const description = computed(() => props.recommendation.description || props.rec
       >
         {{ description }}
       </p>
+
+      <div
+        v-if="suggestedChange"
+        class="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/70 px-3 py-2.5"
+      >
+        <p class="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+          Suggested change
+        </p>
+        <p class="mt-1 text-sm leading-relaxed text-indigo-950">
+          {{ suggestedChange }}
+        </p>
+      </div>
+
+      <div
+        v-if="promptPatch"
+        class="mt-3 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2.5"
+      >
+        <p class="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+          Prompt patch
+        </p>
+        <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-amber-950">{{ promptPatch }}</pre>
+      </div>
+
+      <div
+        v-if="actionAdjustment"
+        class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2.5"
+      >
+        <p class="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+          Action / config adjustment
+        </p>
+        <p class="mt-1 text-sm leading-relaxed text-emerald-950">
+          {{ actionAdjustment }}
+        </p>
+      </div>
+
       <div
         v-if="relatedRubricItems.length"
         class="mt-2.5 flex flex-wrap gap-1.5"

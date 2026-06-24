@@ -1,4 +1,4 @@
-import { evaluateAllCalls, generateRubric } from './evaluation-service.js'
+import { evaluateAllCalls, generateAgentAnalysis, generateRubric } from './evaluation-service.js'
 import { syncAgents, syncCallLogs } from './ingestion-service.js'
 import { prisma } from './prisma.js'
 
@@ -237,14 +237,46 @@ function buildTopRecommendations(evaluations) {
       }
 
       const current = counts.get(title) || {
+        actionAdjustment: recommendation.actionAdjustment || null,
         description: recommendation.description || recommendation.recommendation || null,
         frequency: 0,
         impactArea: recommendation.impactArea || null,
         priority: recommendation.priority ?? null,
+        promptPatch: recommendation.promptPatch || null,
         relatedRubricItems: ensureArray(recommendation.relatedRubricItems),
+        suggestedChange: recommendation.suggestedChange || null,
         title,
       }
       current.frequency += 1
+
+      if (!current.description && recommendation.description) {
+        current.description = recommendation.description
+      }
+
+      if (!current.impactArea && recommendation.impactArea) {
+        current.impactArea = recommendation.impactArea
+      }
+
+      if (current.priority === null && recommendation.priority !== null && recommendation.priority !== undefined) {
+        current.priority = recommendation.priority
+      }
+
+      if ((!current.suggestedChange || current.suggestedChange.length === 0) && recommendation.suggestedChange) {
+        current.suggestedChange = recommendation.suggestedChange
+      }
+
+      if ((!current.promptPatch || current.promptPatch.length === 0) && recommendation.promptPatch) {
+        current.promptPatch = recommendation.promptPatch
+      }
+
+      if ((!current.actionAdjustment || current.actionAdjustment.length === 0) && recommendation.actionAdjustment) {
+        current.actionAdjustment = recommendation.actionAdjustment
+      }
+
+      if (current.relatedRubricItems.length === 0 && ensureArray(recommendation.relatedRubricItems).length > 0) {
+        current.relatedRubricItems = ensureArray(recommendation.relatedRubricItems)
+      }
+
       counts.set(title, current)
     }
   }
@@ -583,6 +615,8 @@ async function getDashboardOverview() {
 async function loadAgentDashboardContext(agentId) {
   const agent = await prisma.agent.findUnique({
     select: {
+      agentAnalysis: true,
+      agentAnalysisGeneratedAt: true,
       agentName: true,
       businessName: true,
       id: true,
@@ -642,11 +676,15 @@ async function loadAgentDashboardContext(agentId) {
 
 async function getAgentDashboard(agentId) {
   const { agent, calls, evaluations } = await loadAgentDashboardContext(agentId)
+  const agentAnalysisResult = await generateAgentAnalysis(agentId)
   const evaluationScores = getNumericValues(evaluations.map((evaluation) => evaluation.overallScore))
   const durations = getNumericValues(calls.map((callLog) => callLog.duration))
+  const agentAnalysis = agentAnalysisResult.analysis || agent.agentAnalysis || null
 
   return {
     agent,
+    agentAnalysis,
+    agentAnalysisGeneratedAt: agentAnalysisResult.generatedAt || agent.agentAnalysisGeneratedAt || null,
     calls: calls.map((callLog) => ({
       calledAt: callLog.calledAt,
       duration: callLog.duration,
@@ -667,7 +705,9 @@ async function getAgentDashboard(agentId) {
       totalCalls: calls.length,
     },
     recentEvaluations: evaluations.slice(0, 10).map(buildRecentEvaluationSummary),
-    topRecommendations: buildTopRecommendations(evaluations),
+    topRecommendations: ensureArray(agentAnalysis?.topRecommendations).length
+      ? ensureArray(agentAnalysis.topRecommendations)
+      : buildTopRecommendations(evaluations),
     useActions: buildAgentUseActions(evaluations),
   }
 }
@@ -767,6 +807,31 @@ async function generateNeededRubrics(agents) {
   return { errors, generatedCount, regeneratedAgentIds }
 }
 
+async function generateAgentAnalyses(agents) {
+  let generatedCount = 0
+  const errors = []
+
+  for (const agent of agents) {
+    try {
+      const result = await generateAgentAnalysis(agent.id)
+
+      if (result.analysis) {
+        generatedCount += 1
+      }
+    } catch (error) {
+      errors.push({
+        agentId: agent.id,
+        message: error.message,
+      })
+    }
+  }
+
+  return {
+    errors,
+    generatedCount,
+  }
+}
+
 async function evaluateCallsForAgents(agents, options = {}) {
   const { forceAgentIds = [] } = options
   const forcedAgentIdSet = new Set(forceAgentIds)
@@ -805,9 +870,11 @@ async function syncAndEvaluateDashboard() {
   const evaluationSummary = await evaluateCallsForAgents(agents, {
     forceAgentIds: rubricGeneration.regeneratedAgentIds,
   })
+  const agentAnalysisSummary = await generateAgentAnalyses(agents)
 
   return {
     agentSync,
+    agentAnalysisSummary,
     callSync,
     evaluationSummary,
     rubricGeneration,

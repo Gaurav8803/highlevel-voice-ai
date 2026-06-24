@@ -20,6 +20,9 @@ model Agent {
   rubric            Json?
   rubricConfigHash  String?
   rubricGeneratedAt DateTime?
+  agentAnalysis     Json?
+  agentAnalysisInputHash String?
+  agentAnalysisGeneratedAt DateTime?
   rawConfig         Json
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt

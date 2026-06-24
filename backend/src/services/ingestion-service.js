@@ -107,23 +107,59 @@ function getCallRecord(callLog, agentId, turns) {
   }
 }
 
-function getExistingIdSet(records, key) {
-  return new Set(records.map((record) => record[key]))
+function getLocationIdScope() {
+  return ghlClient.locationId || null
+}
+
+function getAgentSyncScopeWhere() {
+  const locationId = getLocationIdScope()
+
+  return locationId
+    ? {
+      locationId,
+    }
+    : {}
+}
+
+async function deleteStaleAgents(activeAgentIds) {
+  const scopeWhere = getAgentSyncScopeWhere()
+  const staleAgents = await prisma.agent.findMany({
+    select: {
+      id: true,
+    },
+    where: {
+      ...scopeWhere,
+      ghlAgentId: {
+        notIn: activeAgentIds,
+      },
+    },
+  })
+
+  if (staleAgents.length === 0) {
+    return 0
+  }
+
+  const { count } = await prisma.agent.deleteMany({
+    where: {
+      id: {
+        in: staleAgents.map((agent) => agent.id),
+      },
+    },
+  })
+
+  return count
 }
 
 async function syncAgents() {
   const agents = await ghlClient.listAgents()
   const ghlAgentIds = agents.map((agent) => String(agent.id || agent.agentId))
   const existingAgents = await prisma.agent.findMany({
-    where: {
-      ghlAgentId: {
-        in: ghlAgentIds,
-      },
-    },
+    where: getAgentSyncScopeWhere(),
     select: {
       agentName: true,
       businessName: true,
       configHash: true,
+      id: true,
       ghlAgentId: true,
       locationId: true,
     },
@@ -133,11 +169,13 @@ async function syncAgents() {
     existingAgents.map((agent) => [agent.ghlAgentId, agent])
   )
   let createdCount = 0
+  const activeAgentIds = new Set()
   let updatedCount = 0
 
   for (const agent of agents) {
     const record = getAgentRecord(agent)
     const existingAgent = existingAgentsByGhlId.get(record.ghlAgentId)
+    activeAgentIds.add(record.ghlAgentId)
 
     if (!existingAgent) {
       await prisma.agent.create({
@@ -182,8 +220,11 @@ async function syncAgents() {
     }
   }
 
+  const deletedCount = await deleteStaleAgents([...activeAgentIds])
+
   return {
     createdCount,
+    deletedCount,
     totalSynced: agents.length,
     updatedCount,
   }
@@ -206,20 +247,61 @@ async function getAgentMap(callLogs) {
   return new Map(agents.map((agent) => [agent.ghlAgentId, agent.id]))
 }
 
-async function getExistingCallIdSet(callLogs) {
-  const ghlCallIds = callLogs.map((callLog) => String(callLog.id || callLog.callId))
-  const existingCalls = await prisma.callLog.findMany({
-    where: {
-      ghlCallId: {
-        in: ghlCallIds,
+async function getExistingCallsForSync(agentId) {
+  if (agentId) {
+    const agent = await prisma.agent.findUnique({
+      where: {
+        ghlAgentId: agentId,
       },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!agent) {
+      return []
+    }
+
+    return prisma.callLog.findMany({
+      where: {
+        agentId: agent.id,
+      },
+      select: {
+        ghlCallId: true,
+        id: true,
+      },
+    })
+  }
+
+  return prisma.callLog.findMany({
+    where: {
+      agent: getAgentSyncScopeWhere(),
     },
     select: {
       ghlCallId: true,
+      id: true,
+    },
+  })
+}
+
+async function deleteStaleCalls(existingCalls, activeCallIds) {
+  const staleCallIds = existingCalls
+    .filter((callLog) => !activeCallIds.has(callLog.ghlCallId))
+    .map((callLog) => callLog.id)
+
+  if (staleCallIds.length === 0) {
+    return 0
+  }
+
+  const { count } = await prisma.callLog.deleteMany({
+    where: {
+      id: {
+        in: staleCallIds,
+      },
     },
   })
 
-  return getExistingIdSet(existingCalls, 'ghlCallId')
+  return count
 }
 
 function normalizeTranscript(transcriptWithToolCalls) {
@@ -239,18 +321,19 @@ function normalizeTranscript(transcriptWithToolCalls) {
 
 async function syncCallLogs({ agentId } = {}) {
   const callLogs = await ghlClient.listCallLogs({ agentId })
-  const existingCallIds = await getExistingCallIdSet(callLogs)
   const agentMap = await getAgentMap(callLogs)
+  const existingCalls = await getExistingCallsForSync(agentId)
+  const existingCallsByGhlId = new Map(
+    existingCalls.map((callLog) => [callLog.ghlCallId, callLog])
+  )
+  const activeCallIds = new Set()
   let ingestedCount = 0
   let skippedCount = 0
+  let updatedCount = 0
 
   for (const callLog of callLogs) {
     const ghlCallId = String(callLog.id || callLog.callId)
-
-    if (existingCallIds.has(ghlCallId)) {
-      skippedCount += 1
-      continue
-    }
+    activeCallIds.add(ghlCallId)
 
     const agentRecordId = agentMap.get(String(callLog.agentId || ''))
 
@@ -260,18 +343,36 @@ async function syncCallLogs({ agentId } = {}) {
     }
 
     const turns = normalizeTranscript(callLog.transcriptWithToolCalls)
+    const record = getCallRecord(callLog, agentRecordId, turns)
+    const existingCall = existingCallsByGhlId.get(ghlCallId)
+
+    if (existingCall) {
+      await prisma.callLog.update({
+        data: record,
+        where: {
+          id: existingCall.id,
+        },
+      })
+
+      updatedCount += 1
+      continue
+    }
 
     await prisma.callLog.create({
-      data: getCallRecord(callLog, agentRecordId, turns),
+      data: record,
     })
 
     ingestedCount += 1
   }
 
+  const deletedCount = await deleteStaleCalls(existingCalls, activeCallIds)
+
   return {
+    deletedCount,
     ingestedCount,
     skippedCount,
     totalFetched: callLogs.length,
+    updatedCount,
   }
 }
 

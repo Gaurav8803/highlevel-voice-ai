@@ -33,4 +33,15 @@ function computeAgentConfigHash(agent) {
     .digest('hex')
 }
 
-export { computeAgentConfigHash }
+function computeAgentAnalysisInputHash({ agent, analysisInput }) {
+  const payload = {
+    agentPrompt: agent.agentPrompt ?? agent.prompt ?? '',
+    analysisInput: sortValue(analysisInput ?? null),
+  }
+
+  return createHash('sha256')
+    .update(JSON.stringify(payload))
+    .digest('hex')
+}
+
+export { computeAgentAnalysisInputHash, computeAgentConfigHash }

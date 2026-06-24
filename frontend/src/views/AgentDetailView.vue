@@ -27,6 +27,8 @@ const { agent, isLoading, isError, error, regenerateRubric, rubricPending } = us
 
 const isEmbedded = computed(() => route.query.embedded === 'true' || window.__VOICE_AI_EMBED__?.embedded === true)
 const detail = computed(() => agent.value)
+const agentAnalysis = computed(() => detail.value?.agentAnalysis || null)
+const agentAnalysisSummary = computed(() => agentAnalysis.value?.overallAssessment || '')
 const metrics = computed(() => detail.value?.metrics || {})
 const rubric = computed(() => detail.value?.agent?.rubric || null)
 const rubricItems = computed(() => (Array.isArray(rubric.value?.rubric) ? rubric.value.rubric : []))
@@ -339,6 +341,22 @@ function openCall(call) {
           value="fix"
           class="space-y-8"
         >
+          <Card v-if="agentAnalysisSummary">
+            <CardHeader>
+              <CardTitle class="text-base">
+                Agent-wide analysis
+              </CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-2">
+              <p class="text-sm leading-relaxed text-muted-foreground">
+                {{ agentAnalysisSummary }}
+              </p>
+              <p class="text-xs text-muted-foreground">
+                Based on the current agent prompt, rubric, and all stored call transcripts for this agent.
+              </p>
+            </CardContent>
+          </Card>
+
           <div class="space-y-3">
             <div>
               <h3 class="text-sm font-semibold text-foreground">
